@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 import pickle as pkl
 from sklearn import preprocessing
+import h5py
+from unidecode import unidecode
 
 # Local imports
 from utils.parse_arguments import parse_arguments_generate_dataset
@@ -45,9 +47,9 @@ class GenerateDataset:
         self.righthand_lm = righthand_lm
         self.face_lm = face_lm
 
-        self.mp_holistic, self.holistic, self.mp_drawing, self.drawing_spec = get_solution_mediapipe(with_lf)
+        self.mp_holistic, self.holistic, self.mp_drawing, self.drawing_spec = self.get_solution_mediapipe(with_lf)
 
-        self.folder_list = get_folder_list()
+        self.folder_list = self.get_folder_list()
 
         self.list_X = []
         self.list_Y = []
@@ -56,7 +58,7 @@ class GenerateDataset:
         self.list_videoname = []
 
 
-    def get_solution_mediapipe(with_lf):
+    def get_solution_mediapipe(self, with_lf):
         print("Holistic Model")
         mp_holistic = mp.solutions.holistic
 
@@ -76,7 +78,7 @@ class GenerateDataset:
         return mp_holistic, holistic, mp_drawing, drawing_spec
 
 
-    def get_folder_list():
+    def get_folder_list(self):
         # Folder list of videos's frames
         if os.path.isdir(self.input_path):
             folder_list = [file for file in os.listdir(self.input_path)
@@ -88,13 +90,15 @@ class GenerateDataset:
         return folder_list
 
 
-    def create_dataset(min_frames=10, min_instances=4):
+    def create_dataset(self, min_frames=10, min_instances=4):
         for video_folder_name in self.folder_list:
             video_folder_path = self.input_path + video_folder_name
             video_folder_list = [file for file in os.listdir(video_folder_path)]
 
             for video_file in video_folder_list:
                 self.process_video(video_file, video_folder_path)
+
+        self.holistic.close()
 
         data = {
                 "videoname": self.list_videoname,
@@ -116,6 +120,7 @@ class GenerateDataset:
         le.fit(df_or["class"])
         classes_array = le.transform(df_or.groupby('videoname')["class"].first().values)
         name_classes_array = df_or.groupby('videoname')["class"].first().values
+        name_classes_array = [unidecode(x) for x in name_classes_array]
 
         assert len(classes_array) == len(name_classes_array), "There is a problem with label encoder"
 
@@ -127,20 +132,23 @@ class GenerateDataset:
                                     ascending=True)[["videoname", "axis", 
                                                     "n_frame", "n_landmark", "coordinate"]]
         
+        assert len(df_or) % (2 * min_frames * len(LIST_LANDMARKS)) == 0, "This shape is not correct"
+
         data_array = df_or['coordinate'].values.reshape((-1, 2, min_frames, len(LIST_LANDMARKS)))
 
-        print("Saving files")
-        with open(f"data_{min_frames}_{min_instances}_{len(LIST_LANDMARKS)}.npy", 'wb') as f:
-            np.save(f, data_array)
-        with open(f"label_{min_frames}_{min_instances}_{len(LIST_LANDMARKS)}.npy", 'wb') as f:
-            np.save(f, classes_array)
-        with open(f"labelnames_{min_frames}_{min_instances}_{len(LIST_LANDMARKS)}.npy", 'wb') as f:
-            np.save(f, name_classes_array)
+        print("Saving h5 files")
+        h5_file = h5py.File(f"data_{min_frames}_{min_instances}_{len(LIST_LANDMARKS)}.h5", 'w')
+
+        h5_file["data"] = data_array
+        h5_file["labels"] = classes_array
+        h5_file["name_labels"] = name_classes_array
+
+        h5_file.close()
             
         return
 
     
-    def process_video(video_file, video_folder_path):
+    def process_video(self, video_file, video_folder_path):
         print("processing " + video_file.split('.')[0])
         video_seg_folder_name = video_folder_path+'/'+video_file.split('.')[0]
 
@@ -160,7 +168,7 @@ class GenerateDataset:
             idx += 1
 
     
-    def process_frame(frame, video_file, idx):
+    def process_frame(self, frame, video_file, idx):
         # Convert the BGR image to RGB before processing.
         imageBGR = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -214,7 +222,7 @@ class GenerateDataset:
             else:
                 print("Mediapipe couldnt get face landmarks")
 
-    def filter_data(data, min_frames=10, min_instances=4):
+    def filter_data(self, data, min_frames=10, min_instances=4):
         df = pd.DataFrame(data)  
 
         df['class'] = df['videoname'].apply(lambda x: x.split('_')[0])
@@ -234,13 +242,14 @@ class GenerateDataset:
         df_or = df_or.join(df_check1["all_frames?"], on="videoname")
 
         # applying filters - landmarks
+        print()
         print("Original")
         print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
             " - Number of videos", df_or["videoname"].nunique())
 
         print()
         print("Filter: list of landmarks")
-        df_or = df_or.loc[df_or.n_landmark.isin(list_landmarks)]
+        df_or = df_or.loc[df_or.n_landmark.isin(LIST_LANDMARKS)]
         print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
             " - Number of videos", df_or["videoname"].nunique())
 
@@ -271,6 +280,7 @@ class GenerateDataset:
         print()
         print(f"Filter: classes of at least {min_instances} instances")
         df_or = df_or.loc[df_or.n_instances>=min_instances].reset_index(drop=True)
+        df_or = df_or.loc[df_or["class"]!="NNN"].reset_index(drop=True)
         print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
             " - Number of videos", df_or["videoname"].nunique())
 
@@ -278,6 +288,7 @@ class GenerateDataset:
         ### UNDERSAMPLING TO HAVE THE SAME NUMBER OF INSTANCES OF EACH CLASS
         gg = df_or.groupby(["class", "videoname"]).n_instances.unique().reset_index()
         gg  = gg.groupby('class').apply(lambda x: x.sample(min_instances))
+        gg["instance_to_use?"] = True
         df_or = df_or.join(gg.reset_index(drop=True).set_index(["class", "videoname"])["instance_to_use?"], on=["class", "videoname"])
 
         print()
@@ -290,6 +301,7 @@ class GenerateDataset:
         # subsampling min_frames
         xd = df_or.groupby(["videoname", "n_frame"]).agg({"n_frames": "first"})
         xd['rate'] = xd['n_frames'].apply(lambda x: math.ceil(x/min_frames))
+        xd = xd.reset_index()
         xd['valid_frame?'] = xd['n_frame'] % xd['rate'] == 0
         xd['missing_frames'] = min_frames - xd['n_frames'].apply(lambda x: math.ceil(x/math.ceil(x/min_frames))) 
         
@@ -324,9 +336,6 @@ class GenerateDataset:
         return df_or
 
 
-def main():
-
-
 if __name__ == "__main__":
     args = parse_arguments_generate_dataset()
 
@@ -335,8 +344,10 @@ if __name__ == "__main__":
     lefthand_lm = args.leftHandLandmarks
     righthand_lm = args.rightHandLandmarks
     face_lm = args.faceLandmarks
+    min_frames = args.minframes
+    min_instances = args.mininstances
 
     set_seed(12345)
 
     gds = GenerateDataset(input_path, with_lf, lefthand_lm, righthand_lm, face_lm)
-    gds.create_dataset()
+    gds.create_dataset(min_frames, min_instances)

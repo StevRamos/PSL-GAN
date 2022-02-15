@@ -9,7 +9,7 @@ import json
 def parse_arguments_generate_dataset():
     ap = argparse.ArgumentParser(description='Using of media pipe in PSL')
     
-    ap.add_argument('--inputPath', type=str, default="/data/shuaman/psl_gan/Data/Videos/Segmented_gestures/"
+    ap.add_argument('--inputPath', type=str, default="/data/shuaman/psl_gan/Data/Videos/Segmented_gestures/",
                     help='relative path of images input.')
 
     ap.add_argument('-wlf', '--withLineFeature', default=False, action='store_true',
@@ -23,6 +23,12 @@ def parse_arguments_generate_dataset():
 
     ap.add_argument('-fl', '--faceLandmarks', default=False, action='store_true',
                     help='Get face landmarks')
+
+    ap.add_argument('-mf', '--minframes', type=int, default=10,
+                    help='Number of frames of each video')
+
+    ap.add_argument('-mi', '--mininstances', type=int, default=4,
+                    help='Number of instances of each class')
 
     args = ap.parse_args()
 

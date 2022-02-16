@@ -30,6 +30,9 @@ def parse_arguments_generate_dataset():
     ap.add_argument('-mi', '--mininstances', type=int, default=4,
                     help='Number of instances of each class')
 
+    ap.add_argument('-aej', '--addExtraJoint', default=False, action='store_true',
+                    help='Add the joint number 33 (middle point of 12 and 11)')
+
     args = ap.parse_args()
 
     return args

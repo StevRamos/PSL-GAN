@@ -27,6 +27,8 @@ LIST_LANDMARKS = [0, 1, 2, 3, 4, 5, 6, 7,
                  8, 9, 10, 11, 12, 13, 14,
                  15, 16, 17, 18, 19, 20, 21, 22]
 
+FINAL_COLUMNS = ["videoname", "axis", "n_frame", "n_landmark", "coordinate"]
+
 def set_seed(seed):
     """Set seed"""
     random.seed(seed)
@@ -90,7 +92,7 @@ class GenerateDataset:
         return folder_list
 
 
-    def create_dataset(self, min_frames=10, min_instances=4):
+    def create_dataset(self, min_frames=10, min_instances=4, use_extra_joint=False):
         for video_folder_name in self.folder_list:
             video_folder_path = self.input_path + video_folder_name
             video_folder_list = [file for file in os.listdir(video_folder_path)]
@@ -128,10 +130,15 @@ class GenerateDataset:
         df_or = df_or.set_index(["videoname", "n_frame", "n_landmark"])[["x", "y"]].stack().reset_index()
         df_or.rename(columns={"level_3": "axis", 0: "coordinate"}, inplace=True)
 
-        df_or = df_or.sort_values(by=["videoname", "axis", "n_frame", "n_landmark"],
-                                    ascending=True)[["videoname", "axis", 
-                                                    "n_frame", "n_landmark", "coordinate"]]
-        
+        list_dfs = [df_or[FINAL_COLUMNS]]
+        if use_extra_joint:
+            LIST_LANDMARKS.append(33)
+            df_new_point = df_or.loc[df_or.n_landmark.isin([11, 12])].groupby(["videoname", "axis", "n_frame"]).agg({"coordinate": "mean"}).reset_index()
+            df_new_point["n_landmark"] = 33
+            list_dfs = list_dfs + [df_new_point[FINAL_COLUMNS]]
+
+        df_or = pd.concat(list_dfs).sort_values(by=FINAL_COLUMNS[:-1], ascending=True)
+
         assert len(df_or) % (2 * min_frames * len(LIST_LANDMARKS)) == 0, "This shape is not correct"
 
         data_array = df_or['coordinate'].values.reshape((-1, 2, min_frames, len(LIST_LANDMARKS)))
@@ -346,8 +353,9 @@ if __name__ == "__main__":
     face_lm = args.faceLandmarks
     min_frames = args.minframes
     min_instances = args.mininstances
+    use_extra_joint = args.addExtraJoint
 
     set_seed(12345)
 
     gds = GenerateDataset(input_path, with_lf, lefthand_lm, righthand_lm, face_lm)
-    gds.create_dataset(min_frames, min_instances)
+    gds.create_dataset(min_frames, min_instances, use_extra_joint)

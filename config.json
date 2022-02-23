@@ -1,0 +1,18 @@
+{
+    "hparams": {
+        "n_epochs": 50,
+        "batch_size": 32,
+        "lr": 0.002,
+        "latent_dim": 512,
+        "mlp_dim": 4,
+        "lambda_gp": 10,
+        "n_critic": 5 
+    },
+    "datasets": {
+        "matrix_data": "/home/shuaman/repucs/PSL-GAN/data_10_4_24.h5"
+    },
+    "save_weights": true,
+    "num_backups": 5,
+    "path_saved_weights": "/data/shuaman/psl_gan/weights_trained/",
+    "weights_default": "weights_default"
+}

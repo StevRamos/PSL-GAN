@@ -124,7 +124,7 @@ class PSLGAN():
 
         params = {
             "batch_size": self.config.batch_size,
-            "num_workers": 8
+            "num_workers": 4
         }
 
         train_dataloader = torch.utils.data.DataLoader(self.dataset, 

@@ -37,6 +37,8 @@ class st_gcn(nn.Module):
         self.gcn = ConvTemporalGraphical(in_channels, out_channels,
                                         kernel_size[1][lvl])
 
+        self.gcn.to(self.device)                        
+
         tcn = [nn.Conv2d(
                 out_channels,
                 out_channels,
@@ -48,6 +50,7 @@ class st_gcn(nn.Module):
         tcn.append(nn.BatchNorm2d(out_channels)) if bn else None
 
         self.tcn = nn.Sequential(*tcn)
+        self.tcn.to(self.device)
 
 
         if not residual:
@@ -65,8 +68,10 @@ class st_gcn(nn.Module):
                     stride=(stride, 1)),
                 nn.BatchNorm2d(out_channels),
             )
+            self.residual.to(self.device)
 
-        self.noise = NoiseInjection(out_channels)
+        self.noise = NoiseInjection(out_channels, self.device)
+        self.noise.to(self.device)
 
         self.l_relu = nn.LeakyReLU(0.2, inplace=True)
         self.tanh   = nn.Tanh()

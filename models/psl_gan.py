@@ -3,6 +3,7 @@ import argparse
 import os
 import time
 import math
+import sys
 
 #Third party libraries
 import numpy as np
@@ -12,12 +13,13 @@ from torch.autograd import Variable
 import torch.autograd as autograd
 import torch.nn.functional as F
 from tqdm import tqdm
+import wandb
 
 # Local imports
 from models.generator import Generator
 from models.discriminator import Discriminator
 from utils.psl_dataset import PSLDataset
-from utils.utils_model import init_optimizer, save_weights
+from utils.utils_model import init_optimizer, save_weights, sample_action
 from losses.wgann import compute_gradient_penalty
 
 class PSLGAN():
@@ -27,8 +29,8 @@ class PSLGAN():
         self.device = torch.device("cuda:" + (os.getenv('N_CUDA')if os.getenv('N_CUDA') else "0") if torch.cuda.is_available() else "cpu")
         print(f'Using device {self.device}')
 
-        self.dataset = PSLDataset(self.config.matrix_data)
-
+        self.dataset = PSLDataset(self.config.matrix_data, classes=self.config.signs_to_use)
+        self.label_encoder = self.dataset.label_encoder 
         self.N, self.C, self.T, self.V = self.dataset.N, self.dataset.C, self.dataset.T, self.dataset.V
         self.n_classes = self.dataset.n_classes 
 
@@ -60,7 +62,8 @@ class PSLGAN():
         avg_loss_d = []
         avg_loss_g = []
 
-        for i, (imgs, labels) in enumerate(train_dataloader):
+        for i, (imgs, labels, name_labels) in enumerate(train_dataloader):
+
             real_imgs = Variable(imgs.type(Tensor))
             labels    = Variable(labels.type(LongTensor))
 
@@ -69,6 +72,13 @@ class PSLGAN():
             z = Variable(Tensor(np.random.normal(0, 1, (self.config.batch_size, self.config.latent_dim))))
 
             fake_imgs = self.generator(z, labels)
+
+            #print(f"{real_imgs.shape=}")
+            #print(f"{labels.shape=}")
+            print(f"{z[0,:5]=}")
+            #print(f"{fake_imgs.shape=}")
+            #sys.exit(0)
+
 
             real_validity = self.discriminator(real_imgs, labels)
             fake_validity = self.discriminator(fake_imgs, labels)
@@ -156,6 +166,23 @@ class PSLGAN():
                     pass
                 save_weights(self.generator, self.discriminator, path_save_epoch, self.use_wandb)
 
+                data_numpy, array_videos = sample_action(n_samples=self.config.n_samples, latent_dim=self.config.latent_dim, 
+                                                                name_labels=self.config.signs_to_use, 
+                                                                label_encoder=self.label_encoder, generator=self.generator, 
+                                                                device=self.device, mean_size=1000, 
+                                                                time=self.T, joints=self.V,
+                                                                truncation=0.95, load_weights=False, path_saved_weights=path_save_epoch)
+
+
+                metrics_log["sign_samples"] = [wandb.Video(sign_samples,fps=self.T/10, format="gif") for sign_samples in array_videos.values()] #fps=self.T/10,
+
+                """
+                for sign_samples in array_videos.keys():
+                    print(sign_samples)
+                    print(array_videos[sign_samples].shape)
+                    metrics_log[sign_samples] = wandb.Video(array_videos[sign_samples],fps=self.T/10, format="gif") #fps=self.T/10,         
+                """
+
             if self.use_wandb:
                 wandb.log(metrics_log)
 
@@ -164,6 +191,9 @@ class PSLGAN():
                                     self.config.n_epochs, loss_disc))
             print('Epoch [{}/{}], Gen loss: {:.4f}'.format(epoch +1, 
                                     self.config.n_epochs, loss_gen))
+
+
+            #sys.exit(0)
 
         if self.use_wandb:
             wandb.finish()

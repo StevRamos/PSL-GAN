@@ -94,8 +94,10 @@ def configure_model(config_file, use_wandb):
         mlp_dim = config_file["hparams"]["mlp_dim"],
         lambda_gp = config_file["hparams"]["lambda_gp"],
         n_critic = config_file["hparams"]["n_critic"],
+        n_samples = config_file["hparams"]["n_samples"],
 
         matrix_data = config_file["datasets"]["matrix_data"],
+        signs_to_use = config_file["datasets"]["signs_to_use"],
 
         save_weights = config_file["save_weights"],
         num_backups = config_file["num_backups"],

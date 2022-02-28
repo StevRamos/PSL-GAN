@@ -41,8 +41,11 @@ class ConvTemporalGraphical(nn.Module):
                  t_stride=1,
                  t_padding=0,
                  t_dilation=1,
-                 bias=False):
+                 bias=False,
+                 device=None):
         super(ConvTemporalGraphical, self).__init__()
+
+        self.device = device
 
         self.kernel_size = kernel_size
         self.conv = nn.Conv2d(
@@ -53,11 +56,13 @@ class ConvTemporalGraphical(nn.Module):
             stride=(t_stride, 1),
             dilation=(t_dilation, 1),
             bias=bias)
+
+        self.conv.to(self.device)
         
 
     def forward(self, x, A):
         assert A.size(0) == self.kernel_size
-
+        x.to(self.device)
         x = self.conv(x)
 
         n, kc, t, v = x.size()

@@ -14,3 +14,5 @@ torchvision==0.8.2
 matplotlib==3.3.4
 wandb==0.12.10
 tqdm==4.62.3
+moviepy==1.0.3
+imageio==2.16.0

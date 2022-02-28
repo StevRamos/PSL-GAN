@@ -8,8 +8,9 @@ from torch.autograd import Variable
 
 
 class Mapping_Net(nn.Module):
-    def __init__(self, latent=1024, mlp=4):
+    def __init__(self, device, latent=1024, mlp=4):
         super(Mapping_Net, self).__init__()
+        self.device = device
 
         layers = []
         for i in range(mlp):
@@ -20,6 +21,8 @@ class Mapping_Net(nn.Module):
             layers.append(nn.LeakyReLU(0.2))
 
         self.mlp = nn.Sequential(*layers)
+        self.mlp.to(device)
 
     def forward(self, x):
+        x = x.to(self.device)
         return self.mlp(x)

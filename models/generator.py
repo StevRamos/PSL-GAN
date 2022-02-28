@@ -1,5 +1,7 @@
 #Taken from https://github.com/DegardinBruno/Kinetic-GAN
 
+import sys
+
 # Third party imports
 import torch
 import torch.nn as nn
@@ -30,7 +32,7 @@ class Generator(nn.Module):
         kernel_size          = (temporal_kernel_size, spatial_kernel_size)
         self.t_size          = t_size
 
-        self.mlp = Mapping_Net(in_channels+n_classes, mlp_dim)
+        self.mlp = Mapping_Net(self.device, in_channels+n_classes, mlp_dim)
         self.st_gcn_networks = nn.ModuleList((
             st_gcn(in_channels+n_classes, 512, kernel_size, 1, graph=self.graph, lvl=4, bn=False, residual=False, up_s=False, up_t=1,device=self.device, **kwargs),
             st_gcn(512, 256, kernel_size, 1, graph=self.graph, lvl=3, up_s=True, up_t=2, device=self.device, **kwargs),
@@ -47,10 +49,12 @@ class Generator(nn.Module):
                 nn.Parameter(torch.ones(self.A[i.lvl].size()))
                 for i in self.st_gcn_networks
             ])
+            
         else:
             self.edge_importance = [1] * len(self.st_gcn_networks)
 
-        self.label_emb = nn.Embedding(n_classes, n_classes)
+        self.edge_importance.to(self.device)
+        self.label_emb = nn.Embedding(n_classes, n_classes).to(self.device)
         
 
     def forward(self, x, labels, trunc=None):
@@ -58,6 +62,7 @@ class Generator(nn.Module):
         labels = labels.to(self.device)
 
         c = self.label_emb(labels)
+
         x = torch.cat((c, x), -1)
 
         w = []

@@ -132,5 +132,11 @@ dmypy.json
 *.h5
 notebooks/
 
+wandb/
+
 *.png
 *.pdf
+*.mp4
+*.pk
+*.out
+*.log

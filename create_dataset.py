@@ -9,7 +9,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import pandas as pd
-import pickle as pkl
+import pickle
 from sklearn import preprocessing
 import h5py
 from unidecode import unidecode
@@ -143,6 +143,20 @@ class GenerateDataset:
 
         data_array = df_or['coordinate'].values.reshape((-1, 2, min_frames, len(LIST_LANDMARKS)))
 
+        filename = f"data_{min_frames}_{min_instances}_{len(LIST_LANDMARKS)}.pk"
+        
+
+        print(f"Saving data in {filename} file")
+        pickle_data = {
+            "data": data_array,
+            "labels": classes_array,
+            "name_labels": name_classes_array,
+            "label_encoder": le
+        }
+
+        pickle.dump(pickle_data, open(filename, 'wb'))
+
+        """
         print("Saving h5 files")
         h5_file = h5py.File(f"data_{min_frames}_{min_instances}_{len(LIST_LANDMARKS)}.h5", 'w')
 
@@ -151,7 +165,7 @@ class GenerateDataset:
         h5_file["name_labels"] = name_classes_array
 
         h5_file.close()
-            
+        """    
         return
 
     

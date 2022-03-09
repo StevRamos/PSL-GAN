@@ -30,7 +30,14 @@ class PSLDataset(torch.utils.data.Dataset):
         self.classes = classes
         self.load_data()
 
+    def numpy_data(self):
+        self.data = data_path["data"]
+        self.label = data_path["label"]
+        self.sample_name = data_path["sample_name"]
 
+        self.max, self.min = self.data.max(), self.data.min()
+        self.N, self.C, self.T, self.V = self.data.shape
+        self.n_classes = len(np.unique(self.label))
 
     def load_data(self):
         #self.data_info = h5py.File(self.data_path, 'r')
@@ -43,21 +50,24 @@ class PSLDataset(torch.utils.data.Dataset):
 
         
         if (self.classes is not None) and (len(self.classes)>0):
-            print(f"I will be used the following classes")
+            print(f"it will be used the following classes")
             print(f"{self.classes=}")
             condition = np.isin(np.array(self.sample_name), self.classes)
             self.data = self.data[condition]
             #self.label = self.label[condition]
             self.sample_name = np.array(self.sample_name)[condition]
-            
+
+            assert sorted(np.unique(self.sample_name)) == sorted(self.classes), "Some classes were not found in the dataset"
+
         else: 
+            self.classes = list(set(self.sample_name))
             print("All the classes will be used")
+            print(f"{self.classes=}")
 
         self.label_encoder = preprocessing.LabelEncoder()
         self.label_encoder.fit(self.sample_name)
         self.label = self.label_encoder.transform(self.sample_name)
 
-        assert sorted(np.unique(self.sample_name)) == sorted(self.classes), "Some classes were not found in the dataset"
         
         self.max, self.min = self.data.max(), self.data.min()
         self.N, self.C, self.T, self.V = self.data.shape

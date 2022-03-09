@@ -1,22 +1,21 @@
 {
     "hparams": {
-        "n_epochs": 100,
+        "n_epochs": 1000,
         "batch_size": 4,
         "lr": 0.002,
         "latent_dim": 512,
         "mlp_dim": 4,
         "lambda_gp": 10,
         "n_critic": 5,
-        "n_samples": 5 
+        "n_samples": 10,
+        "n_samples_plot": 5
     },
     "datasets": {
-        "matrix_data": "/home/shuaman/repucs/PSL-GAN/data_10_4_24.pk",
-        "signs_to_use": ["casa", "agua", "familia", "yo",
-                        "fuerte", "si", "no", "pensar", "ver",
-                        "aprender", "decir", "hacer"]
+        "matrix_data": "/home/shuaman/repucs/PSL-GAN/data_10_20_24.pk",
+        "signs_to_use": ["tu", "comer", "si"]
     },
     "save_weights": true,
-    "num_backups": 5,
+    "num_backups": 100,
     "path_saved_weights": "/data/shuaman/psl_gan/weights_trained/",
     "weights_default": "weights_default"
 }

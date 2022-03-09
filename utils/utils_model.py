@@ -1,14 +1,19 @@
 import os
+import math
+import sys
 
 import io
 import cv2
 import torch.nn.init as init
 import torch
+from pytorch_fid.inception import InceptionV3
 from torch.autograd import Variable
+from torch.nn.functional import adaptive_avg_pool2d
 import wandb
 import numpy as np
 from matplotlib import pyplot as plt
 import glob
+from scipy import linalg
 
 LCOLOR = "#A7ABB0"
 RCOLOR = "#2E477D"
@@ -60,7 +65,7 @@ def trunc(latent, mean_size, truncation):  # Truncation trick on Z
 
 
 
-def plot_action(name_labels, path_saved_weights, data_numpy, n_samples):
+def plot_action(name_labels, path_saved_weights, data_numpy, n_samples, n_samples_plot):
     array_videos = {}
 
     #fig, ax = plt.subplots()
@@ -81,10 +86,14 @@ def plot_action(name_labels, path_saved_weights, data_numpy, n_samples):
         #print(f"{lim_inf=}")
         #print(f"{lim_sup=}")
         fake_samples = data_numpy[lim_inf:lim_sup]
+        indexes = np.random.choice(fake_samples.shape[0],
+                                    n_samples_plot, 
+                                    replace=False)
+        fake_samples = fake_samples[indexes]
         #print(fake_samples.shape) 
 
-        left_samples = int((n_samples-1)/2)
-        right_samples = (n_samples - 1) - left_samples        
+        left_samples = int((n_samples_plot-1)/2)
+        right_samples = (n_samples_plot - 1) - left_samples        
             
         #print(f"{left_samples=}")
         for pos in range(1, 1 + left_samples):
@@ -170,10 +179,138 @@ def make_video_action(array_videos):
 
     return array_videos
 
-def sample_action(n_samples, latent_dim, name_labels, 
+
+def calculate_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
+    """Numpy implementation of the Frechet Distance.
+    The Frechet distance between two multivariate Gaussians X_1 ~ N(mu_1, C_1)
+    and X_2 ~ N(mu_2, C_2) is
+            d^2 = ||mu_1 - mu_2||^2 + Tr(C_1 + C_2 - 2*sqrt(C_1*C_2)).
+    Stable version by Dougal J. Sutherland.
+    Params:
+    -- mu1   : Numpy array containing the activations of a layer of the
+               inception net (like returned by the function 'get_predictions')
+               for generated samples.
+    -- mu2   : The sample mean over activations, precalculated on an
+               representative data set.
+    -- sigma1: The covariance matrix over activations for generated samples.
+    -- sigma2: The covariance matrix over activations, precalculated on an
+               representative data set.
+    Returns:
+    --   : The Frechet Distance.
+    """
+
+    mu1 = np.atleast_1d(mu1)
+    mu2 = np.atleast_1d(mu2)
+
+    sigma1 = np.atleast_2d(sigma1)
+    sigma2 = np.atleast_2d(sigma2)
+
+    assert mu1.shape == mu2.shape, \
+        'Training and test mean vectors have different lengths'
+    assert sigma1.shape == sigma2.shape, \
+        'Training and test covariances have different dimensions'
+
+    diff = mu1 - mu2
+
+    # Product might be almost singular
+    covmean, _ = linalg.sqrtm(sigma1.dot(sigma2), disp=False)
+    if not np.isfinite(covmean).all():
+        msg = ('fid calculation produces singular product; '
+               'adding %s to diagonal of cov estimates') % eps
+        print(msg)
+        offset = np.eye(sigma1.shape[0]) * eps
+        covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
+
+    # Numerical error might give slight imaginary component
+    if np.iscomplexobj(covmean):
+        if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
+            m = np.max(np.abs(covmean.imag))
+            raise ValueError('Imaginary component {}'.format(m))
+        covmean = covmean.real
+
+    tr_covmean = np.trace(covmean)
+
+    return (diff.dot(diff) + np.trace(sigma1)
+            + np.trace(sigma2) - 2 * tr_covmean)
+
+
+
+def get_activations(samples, model, device):
+    """Calculates the activations of the pool_3 layer for all images.
+    Params:
+    -- model       : Instance of inception model
+    -- device      : Device to run calculations
+    Returns:
+    -- A numpy array of dimension (num images, dims) that contains the
+       activations of the given tensor when feeding inception with the
+       query tensor.
+    """
+    model.eval()
+
+
+    #GETTING INCEPTION MAP
+    # addinng dimension 3 to get fid
+    with torch.no_grad():
+        if samples.shape[1]!=3:
+            zero_z_coord = torch.zeros(samples.shape[0], 1,
+                                        samples.shape[2],
+                                        samples.shape[3]).to(device)
+            samples_zero_coord = torch.cat((samples,
+                                            zero_z_coord),
+                                            1)                                        
+            pred = model(samples_zero_coord)[0]
+        else:
+            pred = model(samples)[0]
+
+        # If model output is not scalar, apply global spatial average pooling.
+        # This happens if you choose a dimensionality not equal 2048.
+        if pred.size(2) != 1 or pred.size(3) != 1:
+            pred = adaptive_avg_pool2d(pred, output_size=(1, 1))
+        
+        pred = pred.squeeze(3).squeeze(2).cpu().numpy()
+        #END INCEPTION MAP
+
+    return pred
+
+
+
+
+
+def compute_statistics_of_samples(act):
+    """Calculation of the statistics used by the FID.
+    Params:
+    -- act       : List of activations got by inception model
+    Returns:
+    -- mu    : The mean over samples of the activations of the pool_3 layer of
+               the inception model.
+    -- sigma : The covariance matrix of the activations of the pool_3 layer of
+               the inception model.
+    """
+    mu = np.mean(act, axis=0)
+    sigma = np.cov(act, rowvar=False)
+    return mu, sigma
+
+
+
+def calculate_fid_given_arrays(fake, real):
+
+    m1, s1 = compute_statistics_of_samples(fake)
+    m2, s2 = compute_statistics_of_samples(real)
+    fid_value = calculate_frechet_distance(m1, s1, m2, s2)
+
+    return fid_value
+
+
+
+def sample_action(n_samples, n_samples_plot, latent_dim, name_labels, 
                 label_encoder, generator, device, mean_size, 
-                time, joints, load_weights=False,
-                truncation=None, path_saved_weights=None):
+                time, joints, dataset_real, load_weights=False,
+                truncation=None, path_saved_weights=None, batch_size=32,
+                dims_fid=2048):
+
+    block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims_fid]
+    inceptionv3 = InceptionV3([block_idx]).to(device)
+    inceptionv3.eval()
 
     generator.eval()
     if load_weights:
@@ -187,14 +324,68 @@ def sample_action(n_samples, latent_dim, name_labels,
 
     classes = np.array([i for i in labels_to_sample for _ in range(n_samples)])
     #print(classes)
-    z         = Variable(Tensor(np.random.normal(0, 1, (len(classes), latent_dim)))) 
-    z = trunc(z, mean_size, truncation) if truncation is not None else z
 
-    labels_batch = Variable(LongTensor(classes))
+    n_batches = math.ceil(len(classes)/batch_size)
+    
+    labels_batch = []
+    z = []
+    gen_imgs = []
 
-    gen_imgs  = generator(z, labels_batch, truncation)
-    gen_imgs   = gen_imgs.data.cpu()
-    z_s = z.cpu()
+    pred_arr = np.empty((len(classes), dims_fid))
+    start_idx = 0
+
+    #Fake samples
+    with torch.no_grad():
+        for n in range(n_batches):
+            lim_inf = n * batch_size
+            lim_sup = lim_inf + batch_size
+            classes_batch = classes[lim_inf: lim_sup]
+            z_batch = Variable(Tensor(np.random.normal(0, 1, (len(classes_batch), latent_dim)))) 
+            z_batch = trunc(z_batch, mean_size, truncation) if truncation is not None else z_batch  
+            
+            labels_batch_b = Variable(LongTensor(classes_batch))
+
+            gen_imgs_batch  = generator(z_batch, labels_batch_b, truncation)
+            
+            #START INCEPTION MAP
+            pred = get_activations(gen_imgs_batch, inceptionv3, device)
+            pred_arr[start_idx:start_idx + pred.shape[0]] = pred
+            start_idx = start_idx + pred.shape[0]
+            #END INCEPTION MAP
+
+            gen_imgs_batch   = gen_imgs_batch.data.cpu()
+            labels_batch_b = labels_batch_b.data.cpu()
+            z_batch = z_batch.cpu()
+
+            z.append(z_batch)
+            labels_batch.append(labels_batch_b)
+            gen_imgs.append(gen_imgs_batch)
+
+    z = np.concatenate(z)
+    labels_batch = np.concatenate(labels_batch)
+    gen_imgs = np.concatenate(gen_imgs)
+
+
+    #Real samples
+    params = {
+        "batch_size": batch_size,
+        "num_workers": 4
+    }
+    train_dataloader = torch.utils.data.DataLoader(dataset_real, 
+                                                    **params, 
+                                                    shuffle=False)
+
+    pred_arr_real = np.empty((len(dataset_real), dims_fid))
+    start_idx = 0
+    for i, (imgs, _, _) in enumerate(train_dataloader):
+        real_imgs = Variable(imgs.type(Tensor))
+        real_imgs = real_imgs.to(device)
+        #START INCEPTION MAP
+        pred = get_activations(real_imgs, inceptionv3, device)
+        pred_arr_real[start_idx:start_idx + pred.shape[0]] = pred
+        start_idx = start_idx + pred.shape[0]
+        #END INCEPTION MAP
+    # end real samples
 
     data_numpy = np.transpose(gen_imgs[:,:,:time,:joints], (0, 2, 3, 1))
     print(data_numpy.shape)
@@ -208,15 +399,15 @@ def sample_action(n_samples, latent_dim, name_labels,
 
     print(data_numpy.max())
     print(data_numpy.min())
-    #fig, ax = plt.subplots()
 
-    array_videos = plot_action(name_labels, path_saved_weights, data_numpy, n_samples)
+    array_videos = plot_action(name_labels, path_saved_weights, data_numpy, n_samples, n_samples_plot)
     #array_videos = make_video_action(array_videos)
-
+    
+    fid = calculate_fid_given_arrays(pred_arr, pred_arr_real)
+    
     print(data_numpy.max())
     print(data_numpy.min())
 
-    return data_numpy, array_videos
-
-
+    return data_numpy, array_videos, fid
+    
 

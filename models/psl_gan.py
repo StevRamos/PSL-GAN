@@ -69,16 +69,9 @@ class PSLGAN():
 
             self.discriminator.zero_grad()
 
-            z = Variable(Tensor(np.random.normal(0, 1, (self.config.batch_size, self.config.latent_dim))))
+            z = Variable(Tensor(np.random.normal(0, 1, (real_imgs.shape[0], self.config.latent_dim))))
 
             fake_imgs = self.generator(z, labels)
-
-            #print(f"{real_imgs.shape=}")
-            #print(f"{labels.shape=}")
-            print(f"{z[0,:5]=}")
-            #print(f"{fake_imgs.shape=}")
-            #sys.exit(0)
-
 
             real_validity = self.discriminator(real_imgs, labels)
             fake_validity = self.discriminator(fake_imgs, labels)
@@ -158,6 +151,12 @@ class PSLGAN():
                 "loss_disc": loss_disc
             }
 
+            print("Losses/Metrics")
+            print('Epoch [{}/{}], Disc loss: {:.4f}'.format(epoch +1, 
+                                    self.config.n_epochs, loss_disc))
+            print('Epoch [{}/{}], Gen loss: {:.4f}'.format(epoch +1, 
+                                    self.config.n_epochs, loss_gen))
+
             if self.config.save_weights and ((epoch + 1) % int(self.config.n_epochs/self.config.num_backups))==0:
                 path_save_epoch = os.path.join(path_saved_weights, f'epoch_{epoch+1}')
                 try:
@@ -166,16 +165,19 @@ class PSLGAN():
                     pass
                 save_weights(self.generator, self.discriminator, path_save_epoch, self.use_wandb)
 
-                data_numpy, array_videos = sample_action(n_samples=self.config.n_samples, latent_dim=self.config.latent_dim, 
+                data_numpy, array_videos, fid = sample_action(n_samples=self.config.n_samples, n_samples_plot=self.config.n_samples_plot, latent_dim=self.config.latent_dim, 
                                                                 name_labels=self.config.signs_to_use, 
                                                                 label_encoder=self.label_encoder, generator=self.generator, 
                                                                 device=self.device, mean_size=1000, 
-                                                                time=self.T, joints=self.V,
+                                                                time=self.T, joints=self.V, dataset_real=self.dataset,
                                                                 truncation=0.95, load_weights=False, path_saved_weights=path_save_epoch)
 
 
                 metrics_log["sign_samples"] = [wandb.Video(sign_samples,fps=self.T/10, format="gif") for sign_samples in array_videos.values()] #fps=self.T/10,
+                metrics_log["FID"] = fid
 
+                print('Epoch [{}/{}], FID: {:.4f}'.format(epoch +1, 
+                                        self.config.n_epochs, fid))
                 """
                 for sign_samples in array_videos.keys():
                     print(sign_samples)
@@ -186,14 +188,6 @@ class PSLGAN():
             if self.use_wandb:
                 wandb.log(metrics_log)
 
-            print("Losses/Metrics")
-            print('Epoch [{}/{}], Disc loss: {:.4f}'.format(epoch +1, 
-                                    self.config.n_epochs, loss_disc))
-            print('Epoch [{}/{}], Gen loss: {:.4f}'.format(epoch +1, 
-                                    self.config.n_epochs, loss_gen))
-
-
-            #sys.exit(0)
 
         if self.use_wandb:
             wandb.finish()

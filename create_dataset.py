@@ -289,6 +289,9 @@ class GenerateDataset:
         df_or_nframes = df_or.groupby("videoname").agg({"n_frame": "nunique"}).rename(columns={"n_frame": "n_frames"})
         df_or = df_or.join(df_or_nframes, on="videoname")
 
+        print("Saving preprocessed dataset to analize number of frames and instances")
+        df_or.to_csv("preprocessed_dataset.csv", index=False, header=True)
+
         print()
         print("Filter: min number of frames")
         df_or = df_or.loc[df_or.n_frames>=min_frames]

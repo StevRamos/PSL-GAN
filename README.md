@@ -24,5 +24,5 @@ python3 create_dataset.py --addExtraJoint
 ## <strong>Training the Neural Network</strong>
 1. Run the following code for training without wandb tracking.
 ```bash
-python3 train.py --params
+python3 train.py
 ```

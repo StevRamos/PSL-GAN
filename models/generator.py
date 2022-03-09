@@ -1,6 +1,7 @@
 #Taken from https://github.com/DegardinBruno/Kinetic-GAN
 
 import sys
+import math
 
 # Third party imports
 import torch
@@ -35,11 +36,11 @@ class Generator(nn.Module):
         self.mlp = Mapping_Net(self.device, in_channels+n_classes, mlp_dim)
         self.st_gcn_networks = nn.ModuleList((
             st_gcn(in_channels+n_classes, 512, kernel_size, 1, graph=self.graph, lvl=4, bn=False, residual=False, up_s=False, up_t=1,device=self.device, **kwargs),
-            st_gcn(512, 256, kernel_size, 1, graph=self.graph, lvl=3, up_s=True, up_t=2, device=self.device, **kwargs),
-            st_gcn(256, 128, kernel_size, 1, graph=self.graph, lvl=2, bn=False, up_s=True, up_t=2, device=self.device, **kwargs),
-            st_gcn(128, 64, kernel_size, 1, graph=self.graph, lvl=2, up_s=False, up_t=4, device=self.device, **kwargs),
-            st_gcn(64, 32, kernel_size, 1, graph=self.graph, lvl=1, bn=False, up_s=True, up_t=6, device=self.device, **kwargs),
-            st_gcn(32, out_channels, kernel_size, 1, graph=self.graph, lvl=1, up_s=False, up_t=8, device=self.device, **kwargs),
+            st_gcn(512, 256, kernel_size, 1, graph=self.graph, lvl=3, up_s=True, up_t=math.ceil(t_size/5), device=self.device, **kwargs),
+            st_gcn(256, 128, kernel_size, 1, graph=self.graph, lvl=2, bn=False, up_s=True, up_t=math.ceil(t_size/5), device=self.device, **kwargs),
+            st_gcn(128, 64, kernel_size, 1, graph=self.graph, lvl=2, up_s=False, up_t=math.ceil(t_size/2.5), device=self.device, **kwargs),
+            st_gcn(64, 32, kernel_size, 1, graph=self.graph, lvl=1, bn=False, up_s=True, up_t=math.ceil(t_size/1.7), device=self.device, **kwargs),
+            st_gcn(32, out_channels, kernel_size, 1, graph=self.graph, lvl=1, up_s=False, up_t=math.ceil(t_size/1.25), device=self.device, **kwargs),
             st_gcn(out_channels, out_channels, kernel_size, 1, graph=self.graph, lvl=0, bn=False, up_s=True, up_t=t_size, tan=True, device=self.device, **kwargs)
         ))
 

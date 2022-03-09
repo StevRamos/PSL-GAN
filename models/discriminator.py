@@ -1,6 +1,8 @@
 #Taken from https://github.com/DegardinBruno/Kinetic-GAN
 
 # Third party imports
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -33,10 +35,10 @@ class Discriminator(nn.Module):
         #kwargs0 = {k: v for k, v in kwargs.items() if k != 'dropout'}
         self.st_gcn_networks = nn.ModuleList((
             st_gcn(in_channels+n_classes, 32, kernel_size, 1, graph=self.graph, lvl=0, dw_s=True, dw_t=t_size, residual=False, device=device, **kwargs),
-            st_gcn(32, 64, kernel_size, 1, graph=self.graph, lvl=1, dw_s=True, dw_t=8, device=device, **kwargs),
-            st_gcn(64, 128, kernel_size, 1, graph=self.graph, lvl=2, dw_s=False, dw_t=6, device=device, **kwargs),
-            st_gcn(128, 256, kernel_size, 1, graph=self.graph, lvl=2, dw_s=True, dw_t=4, device=device, **kwargs),
-            st_gcn(256, 512, kernel_size, 1, graph=self.graph, lvl=3, dw_s=True, dw_t=2,  device=device, **kwargs),
+            st_gcn(32, 64, kernel_size, 1, graph=self.graph, lvl=1, dw_s=True, dw_t=math.ceil(t_size/1.25), device=device, **kwargs),
+            st_gcn(64, 128, kernel_size, 1, graph=self.graph, lvl=2, dw_s=False, dw_t=math.ceil(t_size/1.7), device=device, **kwargs),
+            st_gcn(128, 256, kernel_size, 1, graph=self.graph, lvl=2, dw_s=True, dw_t=math.ceil(t_size/2.5), device=device, **kwargs),
+            st_gcn(256, 512, kernel_size, 1, graph=self.graph, lvl=3, dw_s=True, dw_t=math.ceil(t_size/5),  device=device, **kwargs),
             st_gcn(512, latent, kernel_size, 1, graph=self.graph, lvl=4, dw_s=False, dw_t=1, device=device, **kwargs),
         ))
 

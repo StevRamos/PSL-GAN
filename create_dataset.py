@@ -92,7 +92,7 @@ class GenerateDataset:
         return folder_list
 
 
-    def create_dataset(self, min_frames=10, min_instances=4, use_extra_joint=False):
+    def create_dataset(self, min_frames=10, min_instances=4, use_extra_joint=False, porc_frame_completion=0.2):
         for video_folder_name in self.folder_list:
             video_folder_path = self.input_path + video_folder_name
             video_folder_list = [file for file in os.listdir(video_folder_path)]
@@ -110,7 +110,7 @@ class GenerateDataset:
                 "y": self.list_Y,
             }
 
-        df_or = self.filter_data(data, min_frames=min_frames, min_instances=min_instances)
+        df_or = self.filter_data(data, min_frames=min_frames, min_instances=min_instances, porc_frame_completion=porc_frame_completion)
 
         #checking
         assert df_or.groupby(["videoname", "n_frame"]).n_landmark.nunique().std()==0 , "Frames dont have the same number of landmarks"
@@ -243,9 +243,10 @@ class GenerateDataset:
             else:
                 print("Mediapipe couldnt get face landmarks")
 
-    def filter_data(self, data, min_frames=10, min_instances=4):
+    def filter_data(self, data, min_frames=10, min_instances=4, porc_frame_completion=0.2):
         df = pd.DataFrame(data)  
 
+        df['videoname'] = df['videoname'].apply(lambda x: x.strip())
         df['class'] = df['videoname'].apply(lambda x: x.split('_')[0])
         df['number'] = df['videoname'].apply(lambda x: x.split('_')[1])
         df['out_range?'] = (df['x']*WIDTH > WIDTH) | (df['y']*HEIGHT > HEIGHT)
@@ -291,6 +292,46 @@ class GenerateDataset:
 
         print("Saving preprocessed dataset to analize number of frames and instances")
         df_or.to_csv("preprocessed_dataset.csv", index=False, header=True)
+
+
+        #FRAME COMPLETION
+        df_fc = df_or.loc[(df_or.n_frames<min_frames) &
+                 (df_or.n_frames>=(1 - porc_frame_completion) * min_frames)]
+        df_fc["n_frame_to_complete"] = min_frames - df_fc["n_frames"]
+
+        df_fc["lower_value"] = df_fc.apply(lambda x: 0 + math.floor(x["n_frame_to_complete"]/2), axis=1)
+        df_fc["upper_value"] = df_fc.apply(lambda x: (x["n_frames"] - 1) - (x["n_frame_to_complete"] - math.floor(x["n_frame_to_complete"]/2)), axis=1)
+
+
+        df_fc.loc[(((df_fc.upper_value - df_fc.lower_value + 1) < df_fc.n_frames) & 
+                    ((df_fc.lower_value>df_fc.n_frame) | (df_fc.upper_value<df_fc.n_frame))) |
+                    (((df_fc.upper_value - df_fc.lower_value + 1) == df_fc.n_frames) & 
+                    (df_fc.lower_value==df_fc.n_frame)), "repeat?"] = True
+
+        df_repeat = df_fc.loc[df_fc["repeat?"]==True].reset_index(drop=True)
+
+        df_repeat.loc[(df_repeat.lower_value>df_repeat.n_frame), "n_frame"] = df_repeat["n_frame"] - df_repeat["lower_value"]
+        df_repeat.loc[(df_repeat.upper_value<df_repeat.n_frame), "n_frame"] = df_repeat["n_frame"] + (df_repeat["n_frames"] - df_repeat["upper_value"] - 1)
+        df_repeat.loc[(df_repeat.n_frame==0) &
+                        (df_repeat.n_frame_to_complete==1), "n_frame"] = -1
+
+        df_or = pd.concat([df_or, df_repeat[df_or.columns]]).sort_values(by=["videoname", "n_frame"],
+                                                        ascending=True)
+        df_or_new_nframes = df_or.groupby("videoname").agg({"n_frame":["min", "nunique"]}).reset_index()
+        df_or_new_nframes.columns = ["videoname", "n_frame_min", "n_frame_nunique"]
+
+        df_or = df_or.merge(df_or_new_nframes.rename(columns={"n_frame_nunique": "n_frames_new"}), how="left")
+        df_or["n_frame"] = df_or["n_frame"] + df_or["n_frame_min"] * -1
+
+        df_or["n_frames"] = df_or["n_frames_new"]
+        df_or.drop(["n_frames_new", "n_frame_min"], axis=1, inplace=True)
+
+        print()
+        print("Filter: fill missing frames to reach the minimum")
+        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
+            " - Number of videos", df_or["videoname"].nunique())
+        #FRAME COMPLETION
+
 
         print()
         print("Filter: min number of frames")
@@ -371,8 +412,9 @@ if __name__ == "__main__":
     min_frames = args.minframes
     min_instances = args.mininstances
     use_extra_joint = args.addExtraJoint
+    porc_frame_completion = args.porcFrameComplet
 
     set_seed(12345)
 
     gds = GenerateDataset(input_path, with_lf, lefthand_lm, righthand_lm, face_lm)
-    gds.create_dataset(min_frames, min_instances, use_extra_joint)
+    gds.create_dataset(min_frames, min_instances, use_extra_joint, porc_frame_completion)

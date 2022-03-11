@@ -33,6 +33,7 @@ class PSLGAN():
         self.label_encoder = self.dataset.label_encoder 
         self.N, self.C, self.T, self.V = self.dataset.N, self.dataset.C, self.dataset.T, self.dataset.V
         self.n_classes = self.dataset.n_classes 
+        self.signs_to_use = self.dataset.classes
 
         self.generator, self.discriminator = self.init_model()
 
@@ -166,7 +167,7 @@ class PSLGAN():
                 save_weights(self.generator, self.discriminator, path_save_epoch, self.use_wandb)
 
                 data_numpy, array_videos, fid = sample_action(n_samples=self.config.n_samples, n_samples_plot=self.config.n_samples_plot, latent_dim=self.config.latent_dim, 
-                                                                name_labels=self.config.signs_to_use, 
+                                                                name_labels=self.signs_to_use, 
                                                                 label_encoder=self.label_encoder, generator=self.generator, 
                                                                 device=self.device, mean_size=1000, 
                                                                 time=self.T, joints=self.V, dataset_real=self.dataset,

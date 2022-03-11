@@ -1,8 +1,8 @@
 {
     "hparams": {
-        "n_epochs": 1000,
+        "n_epochs": 60000,
         "batch_size": 4,
-        "lr": 0.002,
+        "lr": 0.0003,
         "latent_dim": 512,
         "mlp_dim": 4,
         "lambda_gp": 10,
@@ -11,8 +11,8 @@
         "n_samples_plot": 5
     },
     "datasets": {
-        "matrix_data": "/home/shuaman/repucs/PSL-GAN/data_10_20_24.pk",
-        "signs_to_use": ["tu", "comer", "si"]
+        "matrix_data": "/home/shuaman/repucs/PSL-GAN/data_15_20_24.pk",
+        "signs_to_use": []
     },
     "save_weights": true,
     "num_backups": 100,

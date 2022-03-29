@@ -11,8 +11,8 @@
         "n_samples_plot": 5
     },
     "datasets": {
-        "matrix_data": "/home/shuaman/repucs/PSL-GAN/data_15_20_24.pk",
-        "signs_to_use": []
+        "matrix_data": "/data/shuaman/psl_gan/Data/structured_data/data_10_15_27.pk",
+        "signs_to_use": ["comer", "si"]
     },
     "save_weights": true,
     "num_backups": 100,

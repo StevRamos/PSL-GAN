@@ -30,23 +30,11 @@ class PSLDataset(torch.utils.data.Dataset):
         self.classes = classes
         self.load_data()
 
-    def numpy_data(self):
-        self.data = data_path["data"]
-        self.label = data_path["label"]
-        self.sample_name = data_path["sample_name"]
-
-        self.max, self.min = self.data.max(), self.data.min()
-        self.N, self.C, self.T, self.V = self.data.shape
-        self.n_classes = len(np.unique(self.label))
-
     def load_data(self):
-        #self.data_info = h5py.File(self.data_path, 'r')
         self.data_info = pickle.load(open(self.data_path, 'rb'))
         
         self.data = self.data_info['data'] #[...]
-        #self.label = self.data_info['labels'] #[...]
         self.sample_name = self.data_info['name_labels'] #[...]
-        #self.label_encoder = self.data_info['label_encoder']
 
         
         if (self.classes is not None) and (len(self.classes)>0):
@@ -54,7 +42,6 @@ class PSLDataset(torch.utils.data.Dataset):
             print(f"{self.classes=}")
             condition = np.isin(np.array(self.sample_name), self.classes)
             self.data = self.data[condition]
-            #self.label = self.label[condition]
             self.sample_name = np.array(self.sample_name)[condition]
 
             assert sorted(np.unique(self.sample_name)) == sorted(self.classes), "Some classes were not found in the dataset"

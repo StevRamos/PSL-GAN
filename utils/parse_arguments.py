@@ -37,8 +37,17 @@ def parse_configuration(config_file):
 def parse_arguments_generate_dataset():
     ap = argparse.ArgumentParser(description='Using of media pipe in PSL')
     
-    ap.add_argument('--inputPath', type=str, default="/data/shuaman/psl_gan/Data/Videos/Segmented_gestures/",
+    ap.add_argument('--inputPath', type=str, default="/data/shuaman/psl_gan/Data/Videos/SEGMENTED_SIGN/",
                     help='relative path of images input.')
+
+    ap.add_argument('--outputPath', type=str, default="/data/shuaman/psl_gan/Data/structured_data/",
+                    help='output path')
+
+    ap.add_argument('--rawDataset', type=str, default=None,
+                    help='raw dataset in json file')
+
+    ap.add_argument('--rawCocoDataset', type=str, default=None,
+                    help='raw coco dataset in json file')
 
     ap.add_argument('-w', '--withLineFeature', default=False, action='store_true',
                     help="use line features")
@@ -63,7 +72,6 @@ def parse_arguments_generate_dataset():
 
     ap.add_argument('-p', '--porcFrameComplet', type=float, default=0.2,
                     help='Min percentage to fill frames')
-
 
 
     args = ap.parse_args()

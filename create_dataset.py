@@ -3,6 +3,7 @@ import argparse
 import os
 import math
 import random
+import json
 
 # Third party imports
 import cv2
@@ -16,18 +17,45 @@ from unidecode import unidecode
 
 # Local imports
 from utils.parse_arguments import parse_arguments_generate_dataset
-
+from utils.utils_getdata import get_df_mediapipe, get_df_cocopose, filter_landmarks, frame_completion, filter_n_frames, filter_n_instances, undersampling_exact_n_instances
 
 #all the videos were resized to this
 WIDTH = HEIGHT = 220
 
+WIDTH_COCO = HEIGHT_COCO = 256
+
+
 #list of landmarks to get
 # see ->  https://google.github.io/mediapipe/solutions/pose.html
-LIST_LANDMARKS = [0, 1, 2, 3, 4, 5, 6, 7,
-                 8, 9, 10, 11, 12, 13, 14,
-                 15, 16, 17, 18, 19, 20, 21, 22]
+
+N_POSE_LANDMARKS = 33
+LIST_LANDMARKS = [
+                0, 2, 5,
+                11, 12,
+                13, 14,
+                15, 16,
+                21, 22
+                ] #33 p 21 lh 21 rh
+
+N_LHAND_LANDMARKS = 21
+LIST_LHAND_MEDIAPIPE = [
+                    5, 8, 9, 12, 13, 16, 17, 20
+                    ]
+
+N_RHAND_LANDMARKS = 21
+LIST_RHAND_MEDIAPIPE = [
+                    5, 8, 9, 12, 13, 16, 17, 20
+                    ]
+
+LIST_LANDMARKS_COCO = [
+                    0, 1, 2, 5, 6, 7, 8, 9, 10, 95, 116,
+                    96, 99, 100, 103, 104, 107, 108, 111, 
+                    117, 120, 121, 124, 125, 128, 129, 132
+                    ]
 
 FINAL_COLUMNS = ["videoname", "axis", "n_frame", "n_landmark", "coordinate"]
+
+RAW_DATA_FILENAME = 'raw_data_mediapipe.json'
 
 def set_seed(seed):
     """Set seed"""
@@ -39,12 +67,18 @@ def set_seed(seed):
 class GenerateDataset:
     def __init__(self, 
                 input_path, 
+                output_path,
                 with_lf, 
                 lefthand_lm, 
                 righthand_lm, 
-                face_lm):
+                face_lm,
+                raw_dataset,
+                raw_coco_dataset):
 
         self.input_path = input_path
+        self.output_path = output_path
+        self.raw_dataset = raw_dataset
+        self.raw_coco_dataset = raw_coco_dataset
         self.lefthand_lm = lefthand_lm
         self.righthand_lm = righthand_lm
         self.face_lm = face_lm
@@ -92,40 +126,117 @@ class GenerateDataset:
         return folder_list
 
 
+    def get_mediapipe_data(self):
+        if self.raw_dataset is None:
+        
+            for video_folder_name in self.folder_list:
+                video_folder_path = self.input_path + video_folder_name
+                video_folder_list = [file for file in os.listdir(video_folder_path)]
+
+                for video_file in video_folder_list:
+                    self.process_video(video_file, video_folder_path)
+
+            self.holistic.close()
+
+            data = {
+                    "videoname": self.list_videoname,
+                    "n_frame": self.list_frames,
+                    "n_landmark": self.list_pos,
+                    "x": self.list_X,
+                    "y": self.list_Y,
+                }
+
+            raw_datapath = os.path.join(self.output_path, RAW_DATA_FILENAME) 
+            print(f"Saving raw data got by mediapipe in json file: {raw_datapath}")
+            with open(raw_datapath, 'w') as outfile:
+                json.dump(data, outfile)
+
+        else:
+            raw_datapath = os.path.join(self.output_path, self.raw_dataset) 
+            print(f"Loading raw data got by mediapipe from json file: {raw_datapath}")
+            with open(raw_datapath) as json_file:
+                data = json.load(json_file)
+
+            self.list_videoname = data["videoname"]
+            self.list_frames = data["n_frame"]
+            self.list_pos = data["n_landmark"]
+            self.list_X = data["x"]
+            self.list_Y = data["y"]
+
+        return data
+
+    def get_coco_data(self, max_landmark):
+
+        print("Reading coco raw dataset")
+        raw_datapath_coco = os.path.join(self.output_path, self.raw_coco_dataset) 
+        with open(raw_datapath_coco) as json_file:
+            data_cocopose = json.load(json_file)
+
+        dict_data = {}
+
+        list_videoname = []
+        list_frames = []
+        list_pos = []
+        list_X = []
+        list_Y = []
+        list_score = []
+        list_outlier = []
+
+        for data_un in data_cocopose:
+            for frame, frame_keypoints in enumerate(data_un["keypoints"]):
+        #         print(frame_keypoints)
+        #         sys.exit(0)
+                for pos, (x, y, score) in enumerate(zip(frame_keypoints["x"], frame_keypoints["y"], frame_keypoints["scores"])):
+                    list_videoname.append(data_un["label"] + "_" + str(data_un["id"]))
+                    list_frames.append(frame)
+                    list_pos.append(pos + max_landmark + 1)
+                    list_X.append(x/WIDTH_COCO)
+                    list_Y.append(y/HEIGHT_COCO)
+                    list_score.append(score)
+                    list_outlier.append(frame_keypoints["outlier"])
+                    
+        dict_data = {
+            "videoname": list_videoname,
+            "n_frame": list_frames,
+            "n_landmark": list_pos,
+            "x": list_X,
+            "y": list_Y,
+            #"score": list_score,
+            "outlier?": list_outlier
+        }
+
+        return dict_data
+
+
+
     def create_dataset(self, min_frames=10, min_instances=4, use_extra_joint=False, porc_frame_completion=0.2):
-        for video_folder_name in self.folder_list:
-            video_folder_path = self.input_path + video_folder_name
-            video_folder_list = [file for file in os.listdir(video_folder_path)]
+        
+        data = self.get_mediapipe_data()
 
-            for video_file in video_folder_list:
-                self.process_video(video_file, video_folder_path)
+        max_landmark = max(data["n_landmark"])
 
-        self.holistic.close()
+        list_landmarks_mp = LIST_LANDMARKS + [i + N_POSE_LANDMARKS for i in LIST_LHAND_MEDIAPIPE]
+        list_landmarks_mp = list_landmarks_mp + [i + N_POSE_LANDMARKS + N_LHAND_LANDMARKS for i in LIST_RHAND_MEDIAPIPE]
+        list_landmarks_coco_converted = [i + max_landmark + 1 for i in LIST_LANDMARKS_COCO]
+        list_landmarks_total = list_landmarks_mp + list_landmarks_coco_converted
 
-        data = {
-                "videoname": self.list_videoname,
-                "n_frame": self.list_frames,
-                "n_landmark": self.list_pos,
-                "x": self.list_X,
-                "y": self.list_Y,
-            }
+        dict_data_coco = self.get_coco_data(max_landmark)
 
-        df_or = self.filter_data(data, min_frames=min_frames, min_instances=min_instances, porc_frame_completion=porc_frame_completion)
+        df_or = self.filter_data(data, dict_data_coco, list_landmarks_mp, list_landmarks_coco_converted, min_frames=min_frames, min_instances=min_instances, porc_frame_completion=porc_frame_completion)
+        df_or = df_or.sort_values(by=["videoname"], ascending=True).reset_index(drop=True)
 
         #checking
-        assert df_or.groupby(["videoname", "n_frame"]).n_landmark.nunique().std()==0 , "Frames dont have the same number of landmarks"
+        assert df_or.groupby(["videoname", "n_frame"]).n_landmark.nunique().nunique()==1 and df_or.groupby(["videoname", "n_frame"]).n_landmark.nunique().unique()[0]==len(list_landmarks_mp) , "Frames dont have the same number of landmarks"
         assert df_or.groupby("videoname").agg({"n_frame": "nunique"}).n_frame.nunique()==1 and df_or.groupby("videoname").agg({"n_frame": "nunique"}).n_frame.unique()[0]==min_frames, f"Videos were not subsampled to {min_frames} frames"
         assert df_or.groupby("class").agg({"videoname": "nunique"}).videoname.nunique()==1 and df_or.groupby("class").agg({"videoname": "nunique"}).videoname.unique()[0]==min_instances, f"Classes dont have the same number of instances ({min_instances})"
 
         # classes
-        le = preprocessing.LabelEncoder()
-        le.fit(df_or["class"])
-        classes_array = le.transform(df_or.groupby('videoname')["class"].first().values)
         name_classes_array = df_or.groupby('videoname')["class"].first().values
         name_classes_array = [unidecode(x) for x in name_classes_array]
-
-        assert len(classes_array) == len(name_classes_array), "There is a problem with label encoder"
-
+        videonames_array = df_or.groupby('videoname')["class"].first().index
+        assert len(videonames_array) == len(name_classes_array), "There is a problem with classes"
+        #classes
+        
         #reshaping
         df_or = df_or.set_index(["videoname", "n_frame", "n_landmark"])[["x", "y"]].stack().reset_index()
         df_or.rename(columns={"level_3": "axis", 0: "coordinate"}, inplace=True)
@@ -139,33 +250,22 @@ class GenerateDataset:
 
         df_or = pd.concat(list_dfs).sort_values(by=FINAL_COLUMNS[:-1], ascending=True)
 
-        assert len(df_or) % (2 * min_frames * len(LIST_LANDMARKS)) == 0, "This shape is not correct"
+        assert len(df_or) % (2 * min_frames * len(list_landmarks_mp)) == 0, "This shape is not correct"
 
-        data_array = df_or['coordinate'].values.reshape((-1, 2, min_frames, len(LIST_LANDMARKS)))
+        data_array = df_or['coordinate'].values.reshape((-1, 2, min_frames, len(list_landmarks_mp)))
 
-        filename = f"data_{min_frames}_{min_instances}_{len(LIST_LANDMARKS)}.pk"
-        
+        filename = f"data_{min_frames}_{min_instances}_{len(list_landmarks_mp)}.pk"
+        path_filename = os.path.join(self.output_path, filename)
 
         print(f"Saving data in {filename} file")
         pickle_data = {
             "data": data_array,
-            "labels": classes_array,
             "name_labels": name_classes_array,
-            "label_encoder": le
+            "videonames": videonames_array
         }
 
-        pickle.dump(pickle_data, open(filename, 'wb'))
+        pickle.dump(pickle_data, open(path_filename, 'wb'))
 
-        """
-        print("Saving h5 files")
-        h5_file = h5py.File(f"data_{min_frames}_{min_instances}_{len(LIST_LANDMARKS)}.h5", 'w')
-
-        h5_file["data"] = data_array
-        h5_file["labels"] = classes_array
-        h5_file["name_labels"] = name_classes_array
-
-        h5_file.close()
-        """    
         return
 
     
@@ -210,7 +310,8 @@ class GenerateDataset:
         # Left hand
         if self.lefthand_lm:
             if(holisResults.left_hand_landmarks):
-                for posi, data_point in enumerate(holisResults.left_hand_landmarks.landmark):
+                print("Mediapipe got left hand landmarks")
+                for posi, data_point in enumerate(holisResults.left_hand_landmarks.landmark, start=N_POSE_LANDMARKS):
                     self.list_videoname.append(video_file[:-4])
                     self.list_frames.append(idx)
                     self.list_X.append(data_point.x)
@@ -218,11 +319,18 @@ class GenerateDataset:
                     self.list_pos.append(posi)
             else:
                 print("Mediapipe couldnt get left hand landmarks")
+                for posi in range(N_POSE_LANDMARKS, N_POSE_LANDMARKS + N_LHAND_LANDMARKS):
+                    self.list_videoname.append(video_file[:-4])
+                    self.list_frames.append(idx)
+                    self.list_X.append(2*WIDTH)
+                    self.list_Y.append(2*HEIGHT)
+                    self.list_pos.append(posi)
 
         # Right hand
         if self.righthand_lm:
             if(holisResults.right_hand_landmarks):
-                for posi, data_point in enumerate(holisResults.right_hand_landmarks.landmark):
+                print("Mediapipe got right hand landmarks")
+                for posi, data_point in enumerate(holisResults.right_hand_landmarks.landmark, start=N_POSE_LANDMARKS+N_LHAND_LANDMARKS):
                     self.list_videoname.append(video_file[:-4])
                     self.list_frames.append(idx)
                     self.list_X.append(data_point.x)
@@ -230,6 +338,12 @@ class GenerateDataset:
                     self.list_pos.append(posi)
             else:
                 print("Mediapipe couldnt get right hand landmarks")
+                for posi in range(N_POSE_LANDMARKS+N_LHAND_LANDMARKS, N_POSE_LANDMARKS+N_LHAND_LANDMARKS + N_RHAND_LANDMARKS):
+                    self.list_videoname.append(video_file[:-4])
+                    self.list_frames.append(idx)
+                    self.list_X.append(2*WIDTH)
+                    self.list_Y.append(2*HEIGHT)
+                    self.list_pos.append(posi)
 
         # Face mesh
         if self.face_lm:
@@ -243,160 +357,41 @@ class GenerateDataset:
             else:
                 print("Mediapipe couldnt get face landmarks")
 
-    def filter_data(self, data, min_frames=10, min_instances=4, porc_frame_completion=0.2):
-        df = pd.DataFrame(data)  
 
-        df['videoname'] = df['videoname'].apply(lambda x: x.strip())
-        df['class'] = df['videoname'].apply(lambda x: x.split('_')[0])
-        df['number'] = df['videoname'].apply(lambda x: x.split('_')[1])
-        df['out_range?'] = (df['x']*WIDTH > WIDTH) | (df['y']*HEIGHT > HEIGHT)
 
-        df_or = df.loc[df['out_range?']==False, :].reset_index(drop=True)
+    def filter_data(self, data, dict_data_coco, list_landmarks_mp, list_landmarks_coco_converted, min_frames=10, min_instances=4, porc_frame_completion=0.2):
+        
+        #Reading data
+        df, df_or_mediapipe = get_df_mediapipe(data, WIDTH, HEIGHT)
+        df_cocopose, df_or_cocopose = get_df_cocopose(dict_data_coco)
+        
+        df_or = pd.concat([df_or_mediapipe[["videoname", "n_frame", "n_landmark",
+                                "x", "y", "class", "number"]], 
+                            df_or_cocopose[["videoname", "n_frame", "n_landmark",
+                                        "x", "y", "class", "number"]]]).reset_index(drop=True)
 
-        df_flag_lm = df_or.groupby(['videoname', 'n_frame', 'n_landmark']).x.count().unstack()
-        df_flag_lm["have_landmarks?"] = df_flag_lm[LIST_LANDMARKS].sum(1) == len(LIST_LANDMARKS)
-
-        df_check1 = df_flag_lm[df_flag_lm["have_landmarks?"]==True].reset_index().groupby("videoname").agg({"n_frame": ["sum", "max"]})
-        df_check1.columns = [ x[0] + "_" + x[1] for x in df_check1.columns]
-        df_check1["all_frames?"] = df_check1["n_frame_sum"] == df_check1["n_frame_max"]*(df_check1["n_frame_max"]+1)/2
-
-        df_or = df_or.join(df_flag_lm["have_landmarks?"], on=["videoname", "n_frame"])
-        df_or = df_or.join(df_check1["all_frames?"], on="videoname")
-
-        # applying filters - landmarks
         print()
         print("Original")
         print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
             " - Number of videos", df_or["videoname"].nunique())
 
-        print()
-        print("Filter: list of landmarks")
-        df_or = df_or.loc[df_or.n_landmark.isin(LIST_LANDMARKS)]
-        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
-            " - Number of videos", df_or["videoname"].nunique())
-
-        print()
-        print("Filter: frames that have all landmarks")
-        df_or = df_or.loc[df_or["have_landmarks?"]]
-        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
-            " - Number of videos", df_or["videoname"].nunique())
-
-        print()
-        print("Filter: videos which all frames have those landmarks")
-        df_or = df_or.loc[df_or["all_frames?"]]
-        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
-            " - Number of videos", df_or["videoname"].nunique())
+        #Filter landmarks
+        df_or, df_flag_lm, df_flag_lm_v = filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted)
 
         df_or_nframes = df_or.groupby("videoname").agg({"n_frame": "nunique"}).rename(columns={"n_frame": "n_frames"})
         df_or = df_or.join(df_or_nframes, on="videoname")
 
-        print("Saving preprocessed dataset to analize number of frames and instances")
-        df_or.to_csv("preprocessed_dataset.csv", index=False, header=True)
+        #Frame completion
+        df_or = frame_completion(df_or, min_frames, porc_frame_completion)
 
+        #Filter exactly n frames
+        df_or = filter_n_frames(df_or, min_frames)
 
-        #FRAME COMPLETION
-        df_fc = df_or.loc[(df_or.n_frames<min_frames) &
-                 (df_or.n_frames>=(1 - porc_frame_completion) * min_frames)]
-        df_fc["n_frame_to_complete"] = min_frames - df_fc["n_frames"]
+        #Filter at least n instances
+        df_or = filter_n_instances(df_or, min_instances)
 
-        df_fc["lower_value"] = df_fc.apply(lambda x: 0 + math.floor(x["n_frame_to_complete"]/2), axis=1)
-        df_fc["upper_value"] = df_fc.apply(lambda x: (x["n_frames"] - 1) - (x["n_frame_to_complete"] - math.floor(x["n_frame_to_complete"]/2)), axis=1)
-
-
-        df_fc.loc[(((df_fc.upper_value - df_fc.lower_value + 1) < df_fc.n_frames) & 
-                    ((df_fc.lower_value>df_fc.n_frame) | (df_fc.upper_value<df_fc.n_frame))) |
-                    (((df_fc.upper_value - df_fc.lower_value + 1) == df_fc.n_frames) & 
-                    (df_fc.lower_value==df_fc.n_frame)), "repeat?"] = True
-
-        df_repeat = df_fc.loc[df_fc["repeat?"]==True].reset_index(drop=True)
-
-        df_repeat.loc[(df_repeat.lower_value>df_repeat.n_frame), "n_frame"] = df_repeat["n_frame"] - df_repeat["lower_value"]
-        df_repeat.loc[(df_repeat.upper_value<df_repeat.n_frame), "n_frame"] = df_repeat["n_frame"] + (df_repeat["n_frames"] - df_repeat["upper_value"] - 1)
-        df_repeat.loc[(df_repeat.n_frame==0) &
-                        (df_repeat.n_frame_to_complete==1), "n_frame"] = -1
-
-        df_or = pd.concat([df_or, df_repeat[df_or.columns]]).sort_values(by=["videoname", "n_frame"],
-                                                        ascending=True)
-        df_or_new_nframes = df_or.groupby("videoname").agg({"n_frame":["min", "nunique"]}).reset_index()
-        df_or_new_nframes.columns = ["videoname", "n_frame_min", "n_frame_nunique"]
-
-        df_or = df_or.merge(df_or_new_nframes.rename(columns={"n_frame_nunique": "n_frames_new"}), how="left")
-        df_or["n_frame"] = df_or["n_frame"] + df_or["n_frame_min"] * -1
-
-        df_or["n_frames"] = df_or["n_frames_new"]
-        df_or.drop(["n_frames_new", "n_frame_min"], axis=1, inplace=True)
-
-        print()
-        print("Filter: fill missing frames to reach the minimum")
-        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
-            " - Number of videos", df_or["videoname"].nunique())
-        #FRAME COMPLETION
-
-
-        print()
-        print("Filter: min number of frames")
-        df_or = df_or.loc[df_or.n_frames>=min_frames]
-        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
-            " - Number of videos", df_or["videoname"].nunique())
-
-        df_or_class = df_or.groupby("class").agg({"videoname": "nunique"}).rename(columns={"videoname": "n_instances"})
-        df_or = df_or.join(df_or_class, on="class")
-
-        print()
-        print(f"Filter: classes of at least {min_instances} instances")
-        df_or = df_or.loc[df_or.n_instances>=min_instances].reset_index(drop=True)
-        df_or = df_or.loc[df_or["class"]!="NNN"].reset_index(drop=True)
-        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
-            " - Number of videos", df_or["videoname"].nunique())
-
-
-        ### UNDERSAMPLING TO HAVE THE SAME NUMBER OF INSTANCES OF EACH CLASS
-        gg = df_or.groupby(["class", "videoname"]).n_instances.unique().reset_index()
-        gg  = gg.groupby('class').apply(lambda x: x.sample(min_instances))
-        gg["instance_to_use?"] = True
-        df_or = df_or.join(gg.reset_index(drop=True).set_index(["class", "videoname"])["instance_to_use?"], on=["class", "videoname"])
-
-        print()
-        print(f"Filter: subsampling {min_instances} instances frames for each video")
-        df_or = df_or.loc[df_or["instance_to_use?"]==True].reset_index(drop=True)
-        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
-            " - Number of videos", df_or["videoname"].nunique())
-        ###
-
-        # subsampling min_frames
-        xd = df_or.groupby(["videoname", "n_frame"]).agg({"n_frames": "first"})
-        xd['rate'] = xd['n_frames'].apply(lambda x: math.ceil(x/min_frames))
-        xd = xd.reset_index()
-        xd['valid_frame?'] = xd['n_frame'] % xd['rate'] == 0
-        xd['missing_frames'] = min_frames - xd['n_frames'].apply(lambda x: math.ceil(x/math.ceil(x/min_frames))) 
-        
-        xd_valid = xd.loc[(~xd['valid_frame?']) &
-                            (xd.missing_frames>0)]
-        xd_valid['row_number_video'] = xd_valid.groupby(['videoname'])['n_frame'].cumcount() + 1 
-
-        xd_valid['upper_value'] = xd_valid.apply(lambda x: math.floor((x['n_frames'] - (min_frames - x['missing_frames']))/2) 
-                                                   + x['missing_frames'] - math.floor(x['missing_frames']/2), axis=1)
-        xd_valid['lower_value'] = xd_valid.apply(lambda x: math.floor((x['n_frames'] - (min_frames - x['missing_frames']))/2) 
-                                                        - math.floor(x['missing_frames']/2), axis=1)
-
-        xd_valid.loc[((xd_valid['lower_value']<xd_valid['upper_value']) & 
-                    (xd_valid['row_number_video']>xd_valid['lower_value']) & 
-                    (xd_valid['row_number_video']<=xd_valid['upper_value']))|
-                    ((xd_valid['lower_value']==xd_valid['upper_value']) &
-                    (xd_valid['row_number_video']==xd_valid['upper_value'])), 'valid_frame?'] = True
-
-        xd = xd.merge(xd_valid[['videoname', 'n_frame', 'valid_frame?']].rename(columns={'valid_frame?': 'valid_frame2?'}),
-                        how='left', on=['videoname', 'n_frame'])
-        xd.loc[(~xd['valid_frame?']) & 
-                (xd['valid_frame2?']), 'valid_frame?'] = xd['valid_frame2?']
-
-        df_or = df_or.join(xd.set_index(['videoname', 'n_frame'])["valid_frame?"], on=['videoname', 'n_frame'])
-
-        print()
-        print(f"Filter: {min_frames} frames for each video")
-        df_or = df_or.loc[df_or["valid_frame?"]].reset_index(drop=True)
-        print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
-            " - Number of videos", df_or["videoname"].nunique())
+        #Filter exactly n instances
+        df_or = undersampling_exact_n_instances(df_or, min_instances)
 
         return df_or
 
@@ -405,6 +400,7 @@ if __name__ == "__main__":
     args = parse_arguments_generate_dataset()
 
     input_path = args.inputPath
+    output_path = args.outputPath
     with_lf = args.withLineFeature
     lefthand_lm = args.leftHandLandmarks
     righthand_lm = args.rightHandLandmarks
@@ -413,8 +409,10 @@ if __name__ == "__main__":
     min_instances = args.mininstances
     use_extra_joint = args.addExtraJoint
     porc_frame_completion = args.porcFrameComplet
+    raw_dataset = args.rawDataset
+    raw_coco_dataset = args.rawCocoDataset
 
     set_seed(12345)
 
-    gds = GenerateDataset(input_path, with_lf, lefthand_lm, righthand_lm, face_lm)
+    gds = GenerateDataset(input_path, output_path, with_lf, lefthand_lm, righthand_lm, face_lm, raw_dataset, raw_coco_dataset)
     gds.create_dataset(min_frames, min_instances, use_extra_joint, porc_frame_completion)

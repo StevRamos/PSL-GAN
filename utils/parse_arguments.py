@@ -44,22 +44,16 @@ def parse_arguments_generate_dataset():
                     help='output path')
 
     ap.add_argument('--rawDataset', type=str, default=None,
-                    help='raw dataset in json file')
+                    help='raw mediapipe dataset in json file')
 
     ap.add_argument('--rawCocoDataset', type=str, default=None,
                     help='raw coco dataset in json file')
-
-    ap.add_argument('-w', '--withLineFeature', default=False, action='store_true',
-                    help="use line features")
 
     ap.add_argument('-l', '--leftHandLandmarks', default=False, action='store_true',
                     help='Get left hand landmarks')
 
     ap.add_argument('-r', '--rightHandLandmarks', default=False, action='store_true',
                     help='Get right hand landmarks')
-
-    ap.add_argument('-f', '--faceLandmarks', default=False, action='store_true',
-                    help='Get face landmarks')
 
     ap.add_argument('-m', '--minframes', type=int, default=10,
                     help='Number of frames of each video')
@@ -70,9 +64,14 @@ def parse_arguments_generate_dataset():
     ap.add_argument('-a', '--addExtraJoint', default=False, action='store_true',
                     help='Add the joint number 33 (middle point of 12 and 11)')
 
-    ap.add_argument('-p', '--porcFrameComplet', type=float, default=0.2,
+    ap.add_argument('-p', '--porcFrameComplet', type=float, default=0,
                     help='Min percentage to fill frames')
 
+    ap.add_argument('-n', '--nLandmarks', type=int, default=27,
+                    help='version of landmarks to use')
+
+    ap.add_argument('-u', '--useCoco', default=False, action='store_true',
+                    help='use cocowhole pose body dataset')
 
     args = ap.parse_args()
 

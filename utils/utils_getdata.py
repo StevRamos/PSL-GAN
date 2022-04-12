@@ -18,11 +18,13 @@ from unidecode import unidecode
 def get_df_mediapipe(data, width, height):
     df = pd.DataFrame(data)  
     df['videoname'] = df['videoname'].apply(lambda x: x.strip().lower())
-    df['class'] = df['videoname'].apply(lambda x: x.split('_')[0])
-    df['number'] = df['videoname'].apply(lambda x: x.split('_')[1])
+    df['class'] = df['videoname'].apply(lambda x: "_".join(x.split('_')[:-1]))
+    df['number'] = df['videoname'].apply(lambda x: x.split('_')[-1])
     df['out_range?'] = (df['x']*width > width) | (df['y']*height > height)
     print(f"{df.shape=}")
-    df_or_mediapipe = df.loc[df['out_range?']==False, :].reset_index(drop=True)
+    print(f"{df.videoname.nunique()=}")
+    df_or_mediapipe = df.loc[(df['out_range?']==False) &
+                            (df['class']!="???"), :].reset_index(drop=True)
 
     return df, df_or_mediapipe
 
@@ -30,26 +32,29 @@ def get_df_mediapipe(data, width, height):
 def get_df_cocopose(dict_data_coco):
     df_cocopose = pd.DataFrame(dict_data_coco)  
     df_cocopose['videoname'] = df_cocopose['videoname'].apply(lambda x: x.strip().lower())
-    df_cocopose['class'] = df_cocopose['videoname'].apply(lambda x: x.split('_')[0])
-    df_cocopose['number'] = df_cocopose['videoname'].apply(lambda x: x.split('_')[1])
+    df_cocopose['class'] = df_cocopose['videoname'].apply(lambda x: "_".join(x.split('_')[:-1]))
+    df_cocopose['number'] = df_cocopose['videoname'].apply(lambda x: x.split('_')[-1])
     print(f"{df_cocopose.shape=}")
-    df_or_cocopose = df_cocopose.loc[df_cocopose['outlier?']==False, :].reset_index(drop=True)
+    print(f"{df_cocopose.videoname.nunique()=}")
+    df_or_cocopose = df_cocopose.loc[(df_cocopose['outlier?']==False) &
+                            (df_cocopose['class']!="???"), :].reset_index(drop=True)
 
     return df_cocopose, df_or_cocopose
 
 
-def filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted):
+def filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted, use_coco):
 
     #for col_mp, col_coco in zip(list_landmarks_mp, list_landmarks_coco_converted):
     #    df_or.loc[(df_or.n_landmark==col_coco), "n_landmark"] = col_mp
-
+    print(f"Use coco {use_coco}")
 
     df_flag_lm = df_or.groupby(['videoname', 'n_frame', 'n_landmark']).x.count().unstack()
 
-    for col_mp, col_coco in zip(list_landmarks_mp, list_landmarks_coco_converted): 
-        df_flag_lm[col_mp].fillna(df_flag_lm[col_coco], inplace=True)
-        df_or.loc[(df_or.n_landmark==col_coco), "n_landmark"] = col_mp
-    
+    if use_coco:
+        for col_mp, col_coco in zip(list_landmarks_mp, list_landmarks_coco_converted): 
+            df_flag_lm[col_mp].fillna(df_flag_lm[col_coco], inplace=True)
+            df_or.loc[(df_or.n_landmark==col_coco), "n_landmark"] = col_mp
+        
     df_flag_lm["have_landmarks?"] = df_flag_lm[list_landmarks_mp].sum(1) == len(list_landmarks_mp)
 
     df_check1 = df_flag_lm.reset_index().groupby("videoname").agg({"n_frame": "nunique"}).rename(columns={"n_frame": "n_frames"})
@@ -90,9 +95,6 @@ def filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted):
 
 
 def frame_completion(df_or, min_frames, porc_frame_completion):
-    #df_or_nframes = df_or.groupby("videoname").agg({"n_frame": "nunique"}).rename(columns={"n_frame": "n_frames"})
-    #df_or = df_or.join(df_or_nframes, on="videoname")
-
     #FRAME COMPLETION
     df_fc = df_or.loc[(df_or.n_frames<min_frames) &
                 (df_or.n_frames>=(1 - porc_frame_completion) * min_frames)]
@@ -207,3 +209,9 @@ def undersampling_exact_n_instances(df_or, min_instances):
         " - Number of videos", df_or["videoname"].nunique())
     ###
     return df_or
+
+
+
+
+
+

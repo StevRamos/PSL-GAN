@@ -29,29 +29,52 @@ WIDTH_COCO = HEIGHT_COCO = 256
 # see ->  https://google.github.io/mediapipe/solutions/pose.html
 
 N_POSE_LANDMARKS = 33
-LIST_LANDMARKS = [
-                0, 2, 5,
-                11, 12,
-                13, 14,
-                15, 16,
-                21, 22
-                ] #33 p 21 lh 21 rh
+LIST_LANDMARKS_dict = {
+                "27": [
+                    0, 2, 5,
+                    11, 12,
+                    13, 14,
+                    15, 16,
+                    21, 22
+                    ], #33 p 21 lh 21 rh
+                "24": [0, 1, 2, 3, 4, 5, 6, 7,
+                    8, 9, 10, 11, 12, 13, 14,
+                    15, 16, 17, 18, 19, 20, 21, 22]
+                }
 
 N_LHAND_LANDMARKS = 21
-LIST_LHAND_MEDIAPIPE = [
+LIST_LHAND_MEDIAPIPE_dict = {
+                "27": [
                     5, 8, 9, 12, 13, 16, 17, 20
-                    ]
+                    ],
+                "24": []    
+                }
 
 N_RHAND_LANDMARKS = 21
-LIST_RHAND_MEDIAPIPE = [
+LIST_RHAND_MEDIAPIPE_dict = {
+                "27": [
                     5, 8, 9, 12, 13, 16, 17, 20
-                    ]
+                    ],
+                "24": []    
+                }
 
-LIST_LANDMARKS_COCO = [
+LIST_LANDMARKS_COCO_dict = {
+                "27": [
                     0, 1, 2, 5, 6, 7, 8, 9, 10, 95, 116,
                     96, 99, 100, 103, 104, 107, 108, 111, 
                     117, 120, 121, 124, 125, 128, 129, 132
-                    ]
+                    ],
+                "24": [0, 65, 1, 68,
+                        62, 2, 59,
+                        3, 4,
+                        77, 71,
+                        5, 6,
+                        7, 8,
+                        9, 10,
+                        111, 132,
+                        99, 120,
+                        95, 116]
+                }
 
 FINAL_COLUMNS = ["videoname", "axis", "n_frame", "n_landmark", "coordinate"]
 
@@ -68,10 +91,8 @@ class GenerateDataset:
     def __init__(self, 
                 input_path, 
                 output_path,
-                with_lf, 
                 lefthand_lm, 
                 righthand_lm, 
-                face_lm,
                 raw_dataset,
                 raw_coco_dataset):
 
@@ -81,9 +102,8 @@ class GenerateDataset:
         self.raw_coco_dataset = raw_coco_dataset
         self.lefthand_lm = lefthand_lm
         self.righthand_lm = righthand_lm
-        self.face_lm = face_lm
 
-        self.mp_holistic, self.holistic, self.mp_drawing, self.drawing_spec = self.get_solution_mediapipe(with_lf)
+        self.mp_holistic, self.holistic, self.mp_drawing, self.drawing_spec = self.get_solution_mediapipe()
 
         self.folder_list = self.get_folder_list()
 
@@ -94,17 +114,12 @@ class GenerateDataset:
         self.list_videoname = []
 
 
-    def get_solution_mediapipe(self, with_lf):
+    def get_solution_mediapipe(self):
         print("Holistic Model")
         mp_holistic = mp.solutions.holistic
 
-        if with_lf:
-            print("   + with Line Feature")
-            holistic = mp_holistic.Holistic(upper_body_only=True,
-                                                min_detection_confidence=0.5,
-                                                min_tracking_confidence=0.5)
-        else:
-            holistic = mp_holistic.Holistic(min_detection_confidence=0.5,
+
+        holistic = mp_holistic.Holistic(min_detection_confidence=0.5,
                                                 min_tracking_confidence=0.5)
 
         # Drawing
@@ -170,6 +185,7 @@ class GenerateDataset:
         print("Reading coco raw dataset")
         raw_datapath_coco = os.path.join(self.output_path, self.raw_coco_dataset) 
         with open(raw_datapath_coco) as json_file:
+            print(raw_datapath_coco)
             data_cocopose = json.load(json_file)
 
         dict_data = {}
@@ -209,8 +225,14 @@ class GenerateDataset:
 
 
 
-    def create_dataset(self, min_frames=10, min_instances=4, use_extra_joint=False, porc_frame_completion=0.2):
-        
+    def create_dataset(self, min_frames=10, min_instances=4, 
+                    use_extra_joint=False, porc_frame_completion=0.2, 
+                    n_landmarks=27, use_coco=False):
+        LIST_LANDMARKS = LIST_LANDMARKS_dict[str(n_landmarks)]
+        LIST_LHAND_MEDIAPIPE = LIST_LHAND_MEDIAPIPE_dict[str(n_landmarks)]
+        LIST_RHAND_MEDIAPIPE = LIST_RHAND_MEDIAPIPE_dict[str(n_landmarks)]
+        LIST_LANDMARKS_COCO = LIST_LANDMARKS_COCO_dict[str(n_landmarks)]
+
         data = self.get_mediapipe_data()
 
         max_landmark = max(data["n_landmark"])
@@ -222,7 +244,7 @@ class GenerateDataset:
 
         dict_data_coco = self.get_coco_data(max_landmark)
 
-        df_or = self.filter_data(data, dict_data_coco, list_landmarks_mp, list_landmarks_coco_converted, min_frames=min_frames, min_instances=min_instances, porc_frame_completion=porc_frame_completion)
+        df_or = self.filter_data(data, dict_data_coco, list_landmarks_mp, list_landmarks_coco_converted, min_frames=min_frames, min_instances=min_instances, porc_frame_completion=porc_frame_completion, use_coco=use_coco)
         df_or = df_or.sort_values(by=["videoname"], ascending=True).reset_index(drop=True)
 
         #checking
@@ -243,9 +265,9 @@ class GenerateDataset:
 
         list_dfs = [df_or[FINAL_COLUMNS]]
         if use_extra_joint:
-            LIST_LANDMARKS.append(33)
+            list_landmarks_mp.append(max(list_landmarks_mp)+1)
             df_new_point = df_or.loc[df_or.n_landmark.isin([11, 12])].groupby(["videoname", "axis", "n_frame"]).agg({"coordinate": "mean"}).reset_index()
-            df_new_point["n_landmark"] = 33
+            df_new_point["n_landmark"] = max(list_landmarks_mp) + 1
             list_dfs = list_dfs + [df_new_point[FINAL_COLUMNS]]
 
         df_or = pd.concat(list_dfs).sort_values(by=FINAL_COLUMNS[:-1], ascending=True)
@@ -254,7 +276,8 @@ class GenerateDataset:
 
         data_array = df_or['coordinate'].values.reshape((-1, 2, min_frames, len(list_landmarks_mp)))
 
-        filename = f"data_{min_frames}_{min_instances}_{len(list_landmarks_mp)}.pk"
+        str_extra_frames = "_extraframes" if porc_frame_completion>0 else ""
+        filename = f"data{str_extra_frames}_{min_frames}_{min_instances}_{len(list_landmarks_mp)}.pk"
         path_filename = os.path.join(self.output_path, filename)
 
         print(f"Saving data in {filename} file")
@@ -345,21 +368,9 @@ class GenerateDataset:
                     self.list_Y.append(2*HEIGHT)
                     self.list_pos.append(posi)
 
-        # Face mesh
-        if self.face_lm:
-            if(holisResults.face_landmarks):
-                for posi, data_point in enumerate(holisResults.face_landmarks.landmark):
-                    self.list_videoname.append(video_file[:-4])
-                    self.list_frames.append(idx)
-                    self.list_X.append(data_point.x)
-                    self.list_Y.append(data_point.y)
-                    self.list_pos.append(posi)
-            else:
-                print("Mediapipe couldnt get face landmarks")
 
 
-
-    def filter_data(self, data, dict_data_coco, list_landmarks_mp, list_landmarks_coco_converted, min_frames=10, min_instances=4, porc_frame_completion=0.2):
+    def filter_data(self, data, dict_data_coco, list_landmarks_mp, list_landmarks_coco_converted, min_frames=10, min_instances=4, porc_frame_completion=0.2, use_coco=False):
         
         #Reading data
         df, df_or_mediapipe = get_df_mediapipe(data, WIDTH, HEIGHT)
@@ -376,13 +387,15 @@ class GenerateDataset:
             " - Number of videos", df_or["videoname"].nunique())
 
         #Filter landmarks
-        df_or, df_flag_lm, df_flag_lm_v = filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted)
+        df_or, df_flag_lm, df_flag_lm_v = filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted, use_coco)
 
+        #Getting number of frames
         df_or_nframes = df_or.groupby("videoname").agg({"n_frame": "nunique"}).rename(columns={"n_frame": "n_frames"})
         df_or = df_or.join(df_or_nframes, on="videoname")
 
         #Frame completion
-        df_or = frame_completion(df_or, min_frames, porc_frame_completion)
+        if porc_frame_completion>0:
+            df_or = frame_completion(df_or, min_frames, porc_frame_completion)
 
         #Filter exactly n frames
         df_or = filter_n_frames(df_or, min_frames)
@@ -401,18 +414,18 @@ if __name__ == "__main__":
 
     input_path = args.inputPath
     output_path = args.outputPath
-    with_lf = args.withLineFeature
     lefthand_lm = args.leftHandLandmarks
     righthand_lm = args.rightHandLandmarks
-    face_lm = args.faceLandmarks
     min_frames = args.minframes
     min_instances = args.mininstances
     use_extra_joint = args.addExtraJoint
     porc_frame_completion = args.porcFrameComplet
     raw_dataset = args.rawDataset
     raw_coco_dataset = args.rawCocoDataset
-
+    n_landmarks = args.nLandmarks
+    use_coco = args.useCoco
+ 
     set_seed(12345)
 
-    gds = GenerateDataset(input_path, output_path, with_lf, lefthand_lm, righthand_lm, face_lm, raw_dataset, raw_coco_dataset)
-    gds.create_dataset(min_frames, min_instances, use_extra_joint, porc_frame_completion)
+    gds = GenerateDataset(input_path, output_path, lefthand_lm, righthand_lm, raw_dataset, raw_coco_dataset)
+    gds.create_dataset(min_frames, min_instances, use_extra_joint, porc_frame_completion, n_landmarks, use_coco)

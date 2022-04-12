@@ -14,13 +14,28 @@ import numpy as np
 from matplotlib import pyplot as plt
 import glob
 from scipy import linalg
+from PIL import Image
 
 LCOLOR = "#A7ABB0"
 RCOLOR = "#2E477D"
 
-I  = np.array([0,0,0,0 ,1,2,3,4,5,6,9 ,9 ,10,11,11,12,12,13,14,15,15,15,16,16,16,17,18]) # start points
-J  = np.array([1,4,9,10,2,3,7,5,6,8,10,23,23,13,23,14,23,15,16,17,19,21,18,20,22,19,20]) # end points
-LR = np.array([0,1,0,1 ,0,0,0,1,1,1,1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1], dtype=bool)
+# start points
+I_dict  = {
+    "24": np.array([0,0,0,0 ,1,2,3,4,5,6,9 ,9 ,10,11,11,12,12,13,14,15,15,15,16,16,16,17,18]), 
+    "27": np.array([0,0,0,0,3,4,5,6,7,7 ,7 ,7 ,7 ,8 ,8 ,8 ,8 ,8 ,11,13,15,17,19,21,23,25])
+}
+
+# end points
+J_dict  = {
+    "24": np.array([1,4,9,10,2,3,7,5,6,8,10,23,23,13,23,14,23,15,16,17,19,21,18,20,22,19,20]),
+    "27": np.array([1,2,3,4,5,6,7,8,9,11,13,15,17,10,19,21,23,25,12,14,16,18,20,22,24,26]) 
+}
+
+#left right
+LR_dict = {
+    "24": np.array([0,1,0,1 ,0,0,0,1,1,1,1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1], dtype=bool),
+    "27": np.array([0,1,0,1,0,1,0,1,0,0 ,0 ,0 ,0 ,1 ,1 ,1 ,1 ,1 ,0 ,0 ,0 ,0 ,1 ,1 ,1 , 1], dtype=bool)
+}
 
 
 
@@ -64,8 +79,30 @@ def trunc(latent, mean_size, truncation):  # Truncation trick on Z
     return latent
 
 
+def make_gif(outpath, duration, input_frames, format_frames="jpg"):
+    if isinstance(input_frames, (np.ndarray, list, tuple)):
+        images = (Image.fromarray(np.transpose(i, (1,2,0))) for i in input_frames)         
+    elif isinstance(input_frames, (str)):
+        input_path = os.path.join(input_frames, "*." + format_frames)
+        images = (Image.open(f) for f in sorted(glob.glob(input_path), key=os.path.getmtime))
+    else:
+        images = None
+        print("This type file is no supported")
+        sys.exit(0)
 
-def plot_action(name_labels, path_saved_weights, data_numpy, n_samples, n_samples_plot):
+    img = next(images)  # extract first image from iterator
+    img.save(fp=outpath, format='GIF', append_images=images,
+                save_all=True, duration=duration, loop=0)
+
+    print("Gif has been created ...")
+    return outpath
+
+
+def plot_action(name_labels, path_saved_weights, data_numpy, n_samples, n_samples_plot, version_lm=24, duration=1000):
+    I = I_dict[str(version_lm)]
+    J = J_dict[str(version_lm)]
+    LR = LR_dict[str(version_lm)]
+
     array_videos = {}
 
     #fig, ax = plt.subplots()
@@ -112,7 +149,10 @@ def plot_action(name_labels, path_saved_weights, data_numpy, n_samples, n_sample
         
             #plt.cla()
             fig, ax = plt.subplots()
-            ax.set_title(f"Sign {label} - Frame: {frame_idx}")
+            #plt.axis("off")
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+            ax.set_title(f"{n_samples_plot} samples - Sign {label} - Frame: {frame_idx}")
 
             ax.set_xlim([-1*(2*left_samples + 1), 1*(2*right_samples + 1)])
             ax.set_ylim([-1, 1])
@@ -143,9 +183,15 @@ def plot_action(name_labels, path_saved_weights, data_numpy, n_samples, n_sample
             plt.close(fig)
 
         array_video_label = np.array(array_video_label)
-
+        
+        #make gif
+        outpath_gif = os.path.join(path_signs_label, f"sign_{label}.gif")
+        make_gif(outpath_gif, duration, array_video_label)
+        
         #array_videos[f"samples_{label}"] = path_signs_label 
         array_videos[f"samples_{label}"] = array_video_label
+
+        #save 
 
     #plt.close(fig)
 

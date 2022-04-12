@@ -18,7 +18,7 @@ class PSLDataset(torch.utils.data.Dataset):
     """Peruvian Sign Language Dataset
         Dataset: https://github.com/gissemari/PeruvianSignLanguage
     Arguments:
-        data_path: the path to ".h5" data. Extracted by running create_dataset.py
+        data_path: the path to ".pk" data. Extracted by running create_dataset.py
     """
     def __init__(self,
                 data_path,
@@ -71,4 +71,13 @@ class PSLDataset(torch.utils.data.Dataset):
         label = self.label[index]
         name_label = self.sample_name[index]
         
+        return data_numpy, label, name_label 
+
+    def get_data_by_class(self, class_name):
+        condition = np.isin(np.array(self.sample_name), [class_name])
+        data_numpy = self.data[condition]
+        data_numpy = 2 * ((data_numpy-self.min)/(self.max - self.min)) - 1 if self.norm else data_numpy
+        label = self.label[condition]
+        name_label = np.array(self.sample_name)[condition]
+
         return data_numpy, label, name_label 

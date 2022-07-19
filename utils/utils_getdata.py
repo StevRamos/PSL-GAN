@@ -49,7 +49,7 @@ def filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted, us
     print(f"Use coco {use_coco}")
 
     df_flag_lm = df_or.groupby(['videoname', 'n_frame', 'n_landmark']).x.count().unstack()
-
+    df_flag_lm_orig = df_flag_lm.copy()
     if use_coco:
         for col_mp, col_coco in zip(list_landmarks_mp, list_landmarks_coco_converted): 
             df_flag_lm[col_mp].fillna(df_flag_lm[col_coco], inplace=True)
@@ -91,7 +91,7 @@ def filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted, us
     print(f"Shape {df_or.shape} - N classes", df_or["class"].nunique(), 
         " - Number of videos", df_or["videoname"].nunique())
 
-    return df_or, df_flag_lm, df_flag_lm_v
+    return df_or, df_flag_lm_orig, df_flag_lm, df_flag_lm_v
 
 
 def frame_completion(df_or, min_frames, porc_frame_completion):

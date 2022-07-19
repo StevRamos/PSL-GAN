@@ -1,19 +1,86 @@
 #Taken from https://github.com/DegardinBruno/Kinetic-GAN
+import sys
+
 
 # Third party imports
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
+
+class Skeleton():
+    def __init__(self,
+                n_joints):
+        self.n_joints = n_joints
+
+        lvls_dict = {
+                    "24": 5, # 24 -> 13 -> 6 -> 2 -> 1
+                    "27": 5
+                    }
+        self.lvls = lvls_dict[str(self.n_joints)]
+
+        center_dict = {
+                    "24": [23],
+                    "27": [0]  
+                    }
+        self.center = center_dict[str(self.n_joints)]
+
+        neighbor_link_dict = {
+                    "24": [(0,1), (0,4), (0,9), (0,10),
+                         (1,2),
+                         (2,3),
+                         (3,7),
+                         (4,5),
+                         (5,6),
+                         (6,8),
+                         (9,10), (9,23),
+                         (10,23),
+                         (11,13), (11,23),
+                         (12,14), (12,23),
+                         (13,15),
+                         (14,16),
+                         (15,17), (15,19), (15,21),
+                         (16,18), (16,20), (16,22),
+                         (17,19),
+                         (18,20),
+                         ],
+                    "27": [(0,1), (0,2), (0,3), (0,4),
+                         (3,5),
+                         (4,6),
+                         (5,7),
+                         (6,8),
+                         (7,9), (7,11), (7,13), (7,15), (7,17),
+                         (8,10), (8,19), (8,21), (8,23), (8,25),
+                         (11,12),
+                         (13,14),
+                         (15,16),
+                         (17,18),
+                         (19,20),
+                         (21,22),
+                         (23,24),
+                         (25,26),
+                         ]
+                    }
+        self.neighbor_link = neighbor_link_dict[str(self.n_joints)]
+        
+
+
 class GraphPSL():
     """
     """
     def __init__(self,
                 max_hop=1,
-                dilation=1):
+                dilation=1,
+                n_joints=24):
+        
         self.max_hop    = max_hop
         self.dilation   = dilation
-        self.lvls       = 5 # 24 -> 13 -> 6 -> 2 -> 1
+        self.n_joints = n_joints
+
+        self.skeleton = Skeleton(n_joints=self.n_joints)
+
+        self.lvls = self.skeleton.lvls
+        
         self.As         = []
         self.hop_dis    = []
 
@@ -32,30 +99,13 @@ class GraphPSL():
     
     def get_edge(self):
         self.num_node = []
-        self.center = [23] #point 24
+        self.center = self.skeleton.center #[23] #point 24
         self.nodes = []
         self.Gs = []
         
         #"""
-        neighbor_link = [(0,1), (0,4), (0,9), (0,10),
-                         (1,2),
-                         (2,3),
-                         (3,7),
-                         (4,5),
-                         (5,6),
-                         (6,8),
-                         (9,10), (9,23),
-                         (10,23),
-                         (11,13), (11,23),
-                         (12,14), (12,23),
-                         (13,15),
-                         (14,16),
-                         (15,17), (15,19), (15,21),
-                         (16,18), (16,20), (16,22),
-                         (17,19),
-                         (18,20),
-                         ]
-        nodes = np.array([i for i in range(24)])
+        neighbor_link = self.skeleton.neighbor_link
+        nodes = np.array([i for i in range(self.n_joints)])
         """
         
         
@@ -134,11 +184,13 @@ class GraphPSL():
         for i, G in enumerate(self.Gs):  # Uncomment this to visualize graphs
             plt.clf()  # Uncomment this to visualize graphs
             nx.draw(G, with_labels = True)
-            plt.savefig('G_' + str(i) + '.png')
+            plt.show()
+            #plt.savefig('G_' + str(i) + '.png')
 
         assert len(self.num_node) == self.lvls
         assert len(self.nodes)    == self.lvls
         assert len(self.edge)     == self.lvls
+        print(len(self.center))
         assert len(self.center)   == self.lvls
         assert len(self.map)      == self.lvls
 

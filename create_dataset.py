@@ -387,7 +387,7 @@ class GenerateDataset:
             " - Number of videos", df_or["videoname"].nunique())
 
         #Filter landmarks
-        df_or, df_flag_lm, df_flag_lm_v = filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted, use_coco)
+        df_or, df_flag_lm_orig, df_flag_lm, df_flag_lm_v = filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted, use_coco)
 
         #Getting number of frames
         df_or_nframes = df_or.groupby("videoname").agg({"n_frame": "nunique"}).rename(columns={"n_frame": "n_frames"})

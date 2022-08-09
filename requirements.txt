@@ -18,3 +18,6 @@ wandb==0.12.10
 tqdm==4.62.3
 moviepy==1.0.3
 imageio==2.16.0
+seaborn==0.11.2
+missingno==0.5.1
+protobuf==3.20.1

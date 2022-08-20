@@ -42,18 +42,34 @@ def get_df_cocopose(dict_data_coco):
     return df_cocopose, df_or_cocopose
 
 
-def filter_landmarks(df_or, list_landmarks_mp, list_landmarks_coco_converted, use_coco):
+def filter_landmarks(df_or_in, 
+                    list_landmarks_mp, 
+                    list_landmarks_wp,
+                    list_landmarks_op, 
+                    cond,
+                    use_wp,
+                    use_op
+                    ):
+    #print("xf")
+    df_or = df_or_in.copy()
+    df_or.loc[cond, ["x", "y"]] = np.nan
 
-    #for col_mp, col_coco in zip(list_landmarks_mp, list_landmarks_coco_converted):
-    #    df_or.loc[(df_or.n_landmark==col_coco), "n_landmark"] = col_mp
-    print(f"Use coco {use_coco}")
+    print(f"Use wp {use_wp}")
+    print(f"Use op {use_op}")
 
     df_flag_lm = df_or.groupby(['videoname', 'n_frame', 'n_landmark']).x.count().unstack()
+    df_flag_lm = df_flag_lm.replace({0: None})
     df_flag_lm_orig = df_flag_lm.copy()
-    if use_coco:
-        for col_mp, col_coco in zip(list_landmarks_mp, list_landmarks_coco_converted): 
-            df_flag_lm[col_mp].fillna(df_flag_lm[col_coco], inplace=True)
-            df_or.loc[(df_or.n_landmark==col_coco), "n_landmark"] = col_mp
+
+    if use_wp:
+        for col_mp, col_wp in zip(list_landmarks_mp, list_landmarks_wp): 
+            df_flag_lm[col_mp].fillna(df_flag_lm[col_wp], inplace=True)
+            df_or.loc[(df_or.n_landmark==col_wp), "n_landmark"] = col_mp
+
+    if use_op:
+        for col_mp, col_op in zip(list_landmarks_mp, list_landmarks_op): 
+            df_flag_lm[col_mp].fillna(df_flag_lm[col_op], inplace=True)
+            df_or.loc[(df_or.n_landmark==col_op), "n_landmark"] = col_mp
         
     df_flag_lm["have_landmarks?"] = df_flag_lm[list_landmarks_mp].sum(1) == len(list_landmarks_mp)
 

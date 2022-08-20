@@ -13,7 +13,7 @@ networkx==2.5
 torch==1.7.1
 torchvision==0.8.2
 pytorch-fid==0.2.0
-matplotlib==3.3.4
+matplotlib==3.4
 wandb==0.12.10
 tqdm==4.62.3
 moviepy==1.0.3
